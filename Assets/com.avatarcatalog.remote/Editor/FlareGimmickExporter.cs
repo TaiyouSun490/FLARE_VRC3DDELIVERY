@@ -236,6 +236,9 @@ namespace AvatarCatalog.Remote
         }
         public static byte[] Container(JObject doc, byte[] bin)
         {
+            // glTF optional arrays have minItems=1: omit unused resources rather than writing [].
+            foreach (string key in new[] { "images", "textures", "materials", "meshes", "accessors", "bufferViews", "extensionsRequired", "extensionsUsed" })
+                if (doc[key] is JArray optional && optional.Count == 0) doc.Remove(key);
             doc["buffers"] = new JArray(new JObject { ["byteLength"] = bin.Length });
             byte[] json = Encoding.UTF8.GetBytes(doc.ToString(Formatting.None));
             int jlen = (json.Length + 3) & ~3, blen = (bin.Length + 3) & ~3;

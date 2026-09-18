@@ -76,3 +76,14 @@ MVPはLocal-only。生成GameObjectを同期オブジェクトとは扱わない
 ## 検証
 
 `AvatarCatalog.Remote.FlareGimmickRegression.RunBatch`がデモをコンパイル済みUdon VMへ渡し、実Interactイベント・階層・Tween・表示・音声参照・再読込・不正データ・循環上限・テクスチャを検証する。結果は`Library/FlareGimmickRegression.result`。外部ネットワークとヘッドセットの操作検証とは別に記録する。
+
+### 2026-09-18 実行結果
+
+- UdonSharpコンパイル成功。
+- `RunNetworkBatch`: **36 assertions PASS / Network=True**。保存済みPrefabのLOAD DEMOボタンを発火→GitHub rawから実ダウンロード→解析→実Udon Interactイベント→ドア90度・移動・非表示・許可音声まで確認。CLEARボタンの保存済み接続も確認。
+- ゼロ移動・即時逆回転、Boolean setActive、Clear/再読込、循環階層・重複ID・範囲外アクセサ・過大画像・過剰Actionの拒否、未知Action/外部IDの無視、循環イベントの停止を確認。
+- 実描画の前後画像もローカルで確認。画像は`Library/Flare-gimmick-before.png`と`after.png`に出力する（ClientSimの案内UIも写る）。
+- テストはUnity Editor / ClientSim内のコンパイル済みUdon VM。VRChatクライアント/ヘッドセット操作、別の新規Unityプロジェクトへの導入、負荷の最悪値は未検証。ボタンは自動試験で保存済みUnityEventを発火しており、実ユーザーのポインター/VR操作の確認ではない。
+- 再生成時にはUdon/OdinのPrefab保存に伴う`ArgumentNullException (unityObject)`ログが残る。生成Prefabの実行テストは上記のとおりPASSだが、ログが完全にクリーンな正式リリースと扱わない。
+
+`Samples/Runtime-Test.unity`は自動試験用の床・スポーン設定であり、通常の導入にはPlayer Prefabを既存ワールドへ配置する。

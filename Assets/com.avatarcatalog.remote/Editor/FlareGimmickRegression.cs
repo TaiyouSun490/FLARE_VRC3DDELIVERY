@@ -8,6 +8,7 @@ using UdonSharpEditor;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.UI;
 using VRC.SDK3.Components;
 using VRC.Udon;
 
@@ -23,7 +24,7 @@ namespace AvatarCatalog.Remote
         private static float _tweenUntil;
         private static float _readyAt;
         private static GameObject _instance;
-        private static UdonBehaviour _loader, _interpreter;
+        private static UdonBehaviour _loader, _interpreter, _downloader;
         private static Transform _display;
         private static bool _waitingDownload;
         static FlareGimmickRegression() { EditorApplication.update += Poll; }
@@ -68,8 +69,10 @@ namespace AvatarCatalog.Remote
                     _instance = UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(FlareGimmickBuilder.PlayerPath));
                     _loader = UdonSharpEditorUtility.GetBackingUdonBehaviour(_instance.GetComponent<FlareGlbSceneLoader>());
                     _interpreter = UdonSharpEditorUtility.GetBackingUdonBehaviour(_instance.GetComponent<FlareGimmickInterpreter>());
+                    _downloader = UdonSharpEditorUtility.GetBackingUdonBehaviour(_instance.GetComponent<FlareGlbDownloader>());
                     _display = _instance.transform.Find("Downloaded Scene");
                     _loader.InitializeUdonContent(); _interpreter.InitializeUdonContent();
+                    _downloader.InitializeUdonContent();
                     _phase = 1; _wait = EditorApplication.timeSinceStartup + .2; return;
                 }
                 if (_phase == 1)
@@ -78,7 +81,7 @@ namespace AvatarCatalog.Remote
                     if (SessionState.GetBool(Key + ".network", false))
                     {
                         _readyAt = float.MaxValue; _waitingDownload = true;
-                        UdonSharpEditorUtility.GetBackingUdonBehaviour(_instance.GetComponent<FlareGlbDownloader>()).SendCustomEvent("LoadDemo");
+                        Click("LOAD DEMO");
                     }
                     else Load(File.ReadAllBytes(FlareGimmickBuilder.DemoPath));
                     _phase = 2; return;
@@ -86,7 +89,7 @@ namespace AvatarCatalog.Remote
                 int status = (int)_loader.GetProgramVariable("Status");
                 if (_waitingDownload)
                 {
-                    string downloadState = (string)UdonSharpEditorUtility.GetBackingUdonBehaviour(_instance.GetComponent<FlareGlbDownloader>()).GetProgramVariable("State");
+                    string downloadState = (string)_downloader.GetProgramVariable("State");
                     if (downloadState.StartsWith("Download failed")) throw new InvalidOperationException(downloadState);
                     if (status == 0) return;
                     _waitingDownload = false;
@@ -164,7 +167,7 @@ namespace AvatarCatalog.Remote
                     Check(Quaternion.Angle(root.Find("Door").localRotation, Quaternion.Euler(0, -90, 0)) < .1f, "Negative rotation with zero duration");
                     Check(Mathf.Abs(root.Find("Indicator").localPosition.x + .5f) < .001f, "Zero movement preserves position");
                     Check(!root.Find("Indicator").gameObject.activeSelf, "Boolean setActive false");
-                    _loader.SendCustomEvent("Clear");
+                    Click("CLEAR");
                     Check((int)_loader.GetProgramVariable("Status") == 0 && !(bool)_interpreter.GetProgramVariable("Ready"), "Clear disables execution");
                     Finish(true, "PASS " + _checks + " real Udon VM assertions; export/load/Interact/tweens/audio/reload/invalid input/event limits/prepared texture/zero/reverse. Network=" + SessionState.GetBool(Key + ".network", false) + "; headset not tested.");
                 }
@@ -175,6 +178,16 @@ namespace AvatarCatalog.Remote
         {
             _readyAt = float.MaxValue;
             _loader.SetProgramVariable("InputBytes", bytes); _loader.SendCustomEvent("LoadInput");
+        }
+        private static void Click(string name)
+        {
+            foreach (Button button in _instance.GetComponentsInChildren<Button>(true))
+                if (button.name == name)
+                {
+                    Check(button.onClick.GetPersistentEventCount() == 1, "Serialized UI binding: " + name);
+                    button.onClick.Invoke(); return;
+                }
+            throw new InvalidOperationException("Missing UI button: " + name);
         }
         private static void Check(bool value, string message)
         { _checks++; if (!value) throw new InvalidOperationException(message); }
