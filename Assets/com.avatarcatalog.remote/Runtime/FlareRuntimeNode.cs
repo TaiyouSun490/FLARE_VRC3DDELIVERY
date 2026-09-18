@@ -26,16 +26,23 @@ namespace AvatarCatalog.Remote
             if (Interpreter != null) Interpreter.Dispatch(NodeIndex, "interact");
         }
 
-        public void Move(Vector3 delta, float duration, int ease)
+        public bool Move(Vector3 delta, float duration, int ease, float maximum)
         {
-            Tick(Time.timeSinceLevelLoad);
+            float now = Time.timeSinceLevelLoad;
+            Tick(now);
+            // Validate the same sampled pose that starts the new tween, not last frame's pose.
+            Vector3 destination = transform.localPosition + delta;
+            if (!(destination.x >= -maximum && destination.x <= maximum &&
+                  destination.y >= -maximum && destination.y <= maximum &&
+                  destination.z >= -maximum && destination.z <= maximum)) return false;
             _fromPosition = transform.localPosition;
-            _toPosition = _fromPosition + delta;
-            _moveStart = Time.timeSinceLevelLoad;
+            _toPosition = destination;
+            _moveStart = now;
             _moveDuration = duration;
             _moveEase = ease;
             _moving = duration > 0f;
             if (!_moving) transform.localPosition = _toPosition;
+            return true;
         }
 
         public void Rotate(Vector3 axis, float degrees, float duration, int ease)
@@ -52,7 +59,7 @@ namespace AvatarCatalog.Remote
         }
 
         // Called by the persistent interpreter, including while this node is inactive.
-        public void Tick(float now)
+        public bool Tick(float now)
         {
             if (_moving)
             {
@@ -67,6 +74,7 @@ namespace AvatarCatalog.Remote
                 transform.localRotation = _fromRotation * Quaternion.AngleAxis(_rotateDegrees * Ease(t, _rotateEase), _rotateAxis);
                 if (t >= 1f) _rotating = false;
             }
+            return _moving || _rotating;
         }
 
         private float Ease(float t, int kind)

@@ -6,7 +6,7 @@ using VRC.SDK3.Data;
 
 namespace AvatarCatalog.Remote
 {
-    /// <summary>Bounded static GLB profile. One node is built per continuation; no external resources.</summary>
+    /// <summary>Bounded static GLB profile with incremental mesh decoding; no external resources.</summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public sealed class FlareGlbSceneLoader : UdonSharpBehaviour
     {
@@ -21,6 +21,9 @@ namespace AvatarCatalog.Remote
         [Range(1, 16)] public int MaximumMaterials = 8;
         [Range(1, 4)] public int MaximumTextures = 4;
         [Range(1, 512)] public int MaximumTextureDimension = 512;
+        [Range(16, 512)] public int MeshElementsPerFrame = 128;
+        public int PeakDecodeElements;
+        public int DecodeContinuations;
         [HideInInspector] public byte[] InputBytes;
         public int Status; // 0 idle, 1 parsing, 2 ready, 3 error
         public string LastError = "";
@@ -36,6 +39,11 @@ namespace AvatarCatalog.Remote
         private bool[] _initialActive;
         private int _readStart, _readStride, _readCount, _readComponent;
         private bool _scheduled;
+        private int _meshStage, _meshNode, _meshCount, _cursor;
+        private DataDictionary _primitive, _attributes;
+        private Vector3[] _positions, _normals;
+        private Vector2[] _uv;
+        private int[] _indices;
 
         public void Clear()
         {
@@ -49,6 +57,8 @@ namespace AvatarCatalog.Remote
             InputBytes = null; _bytes = null; Status = 0; LoadedVertices = 0;
             _definitions = null; _meshDefs = null; _accessors = null; _views = null;
             _materialDefs = null; _textureDefs = null;
+            ReleaseMeshScratch(); _parents = null; _initialActive = null;
+            PeakDecodeElements = 0; DecodeContinuations = 0;
         }
 
         public void LoadInput()
@@ -74,6 +84,11 @@ namespace AvatarCatalog.Remote
                 rootToken.TokenType != TokenType.DataDictionary)
             { Fail("Invalid GLB JSON."); return; }
             DataDictionary root = rootToken.DataDictionary;
+            if (Text(Dict(root, "asset"), "version", "") != "2.0") { Fail("glTF asset.version must be 2.0."); return; }
+            string[] listKeys = { "buffers", "nodes", "meshes", "accessors", "bufferViews", "materials", "scenes", "extensionsRequired", "skins", "animations" };
+            for (int k = 0; k < listKeys.Length; k++)
+                if (root.ContainsKey(listKeys[k]) && !root.TryGetValue(listKeys[k], TokenType.DataList, out DataToken unused))
+                { Fail("Invalid GLB array: " + listKeys[k]); return; }
             DataList buffers = List(root, "buffers");
             _definitions = List(root, "nodes"); _meshDefs = List(root, "meshes");
             _accessors = List(root, "accessors"); _views = List(root, "bufferViews");
@@ -128,7 +143,7 @@ namespace AvatarCatalog.Remote
             }
             for (int n = 0; n < count; n++) if (_parents[n] == -1 && !seen[n])
             { Fail("MVP requires all nodes to belong to the selected scene."); return; }
-            Nodes = new FlareRuntimeNode[count]; _meshes = new Mesh[count]; _materials = new Material[count];
+            Nodes = new FlareRuntimeNode[count]; _meshes = new Mesh[count]; _materials = new Material[_materialDefs.Count + 1];
             _textures = new Texture2D[_textureDefs.Count];
             _next = -_textureDefs.Count; Status = 1;
             Schedule();
@@ -145,6 +160,11 @@ namespace AvatarCatalog.Remote
         {
             _scheduled = false;
             if (Status != 1) return;
+            if (_meshStage != 0)
+            {
+                if (ContinueMesh()) Schedule();
+                return;
+            }
             if (_next < 0)
             {
                 if (!BuildTexture(_next + _textures.Length)) return;
@@ -176,7 +196,7 @@ namespace AvatarCatalog.Remote
             int width = Integer(d, "width", -1), height = Integer(d, "height", -1);
             int maximum = Mathf.Clamp(MaximumTextureDimension, 1, 512);
             if (width < 1 || height < 1 || width > maximum || height > maximum ||
-                !View(Integer(d, "bufferView", -1), 1) || _readCount != width * height * 4)
+                !View(Integer(d, "bufferView", -1), 1) || _readStride != 1 || _readCount != width * height * 4)
                 return Fail("Invalid prepared RGBA texture. Prepare PNG/JPEG in the editor first.");
             byte[] pixels = new byte[_readCount]; Buffer.BlockCopy(_bytes, _readStart, pixels, 0, pixels.Length);
             Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false, false);
@@ -214,7 +234,7 @@ namespace AvatarCatalog.Remote
             node.transform.localScale = scale; node.transform.localRotation = q;
             node.Renderer.enabled = false; node.Box.enabled = false;
             node.Audio.playOnAwake = false; node.Audio.loop = false; node.Audio.Stop();
-            if (d.ContainsKey("mesh") && !BuildMesh(Integer(d, "mesh", -1), index)) return false;
+            if (d.ContainsKey("mesh") && !BeginMesh(Integer(d, "mesh", -1), index)) return false;
             DataDictionary g = Dict(Dict(d, "extras"), "vrc_gimmick");
             _initialActive[index] = g == null || !g.TryGetValue("initialActive", TokenType.Boolean, out DataToken initial) || initial.Boolean;
             DataDictionary collider = Dict(g, "collider");
@@ -230,7 +250,7 @@ namespace AvatarCatalog.Remote
             return true;
         }
 
-        private bool BuildMesh(int meshIndex, int nodeIndex)
+        private bool BeginMesh(int meshIndex, int nodeIndex)
         {
             if (meshIndex < 0 || meshIndex >= _meshDefs.Count) return Fail("Invalid mesh reference.");
             DataList primitives = List(AsDict(_meshDefs[meshIndex]), "primitives");
@@ -243,61 +263,117 @@ namespace AvatarCatalog.Remote
             int count = _readCount;
             if (count > Mathf.Clamp(MaximumVerticesPerNode, 3, 4096) ||
                 LoadedVertices + count > Mathf.Clamp(MaximumVertices, 3, 40000)) return Fail("Vertex budget exceeded.");
-            Vector3[] positions = new Vector3[count];
-            for (int v = 0; v < count; v++)
+            _meshNode = nodeIndex; _meshCount = count; _primitive = primitive; _attributes = attributes;
+            _positions = new Vector3[count]; _meshStage = 1; _cursor = 0;
+            _meshes[nodeIndex] = new Mesh();
+            return true;
+        }
+
+        private bool ContinueMesh()
+        {
+            if (_meshStage <= 4)
             {
-                int at = _readStart + v * _readStride;
-                Vector3 p = new Vector3(F32(at), F32(at + 4), -F32(at + 8));
-                if (!ValidVector(p, 100f)) return Fail("Invalid vertex position.");
-                positions[v] = p;
-            }
-            Mesh mesh = new Mesh(); _meshes[nodeIndex] = mesh;
-            mesh.vertices = positions;
-            if (attributes.ContainsKey("NORMAL"))
-            {
-                if (!Accessor(Integer(attributes, "NORMAL", -1), "VEC3", 3, false) || _readCount != count) return Fail("Invalid normals.");
-                Vector3[] normals = new Vector3[count];
-                for (int v = 0; v < count; v++)
+                int end = Mathf.Min(_readCount, _cursor + Mathf.Clamp(MeshElementsPerFrame, 16, 512));
+                PeakDecodeElements = Mathf.Max(PeakDecodeElements, end - _cursor); DecodeContinuations++;
+                for (int i = _cursor; i < end; i++)
                 {
-                    int at = _readStart + v * _readStride;
-                    Vector3 normal = new Vector3(F32(at), F32(at + 4), -F32(at + 8));
-                    if (!ValidVector(normal, 16f)) return Fail("Invalid normal.");
-                    normals[v] = normal.normalized;
+                    int at = _readStart + i * _readStride;
+                    if (_meshStage == 1)
+                    {
+                        Vector3 p = new Vector3(F32(at), F32(at + 4), -F32(at + 8));
+                        if (!ValidVector(p, 100f)) return Fail("Invalid vertex position.");
+                        _positions[i] = p;
+                    }
+                    else if (_meshStage == 2)
+                    {
+                        Vector3 normal = new Vector3(F32(at), F32(at + 4), -F32(at + 8));
+                        if (!ValidVector(normal, 16f)) return Fail("Invalid normal.");
+                        _normals[i] = normal.normalized;
+                    }
+                    else if (_meshStage == 3)
+                    {
+                        float x = F32(at), y = F32(at + 4);
+                        if (!Finite(x, 10000f) || !Finite(y, 10000f)) return Fail("Invalid UV.");
+                        _uv[i] = new Vector2(x, 1f - y);
+                    }
+                    else
+                    {
+                        uint id = _readComponent == 5121 ? _bytes[at] : _readComponent == 5123 ? (uint)(_bytes[at] | _bytes[at + 1] << 8) : U32(at);
+                        if (id >= (uint)_meshCount) return Fail("Index references a missing vertex.");
+                        int destination = i % 3 == 1 ? i + 1 : i % 3 == 2 ? i - 1 : i;
+                        _indices[destination] = (int)id;
+                    }
                 }
-                mesh.normals = normals;
+                _cursor = end;
+                if (end < _readCount) return true;
+                _meshStage++; _cursor = 0;
+                return PrepareMeshStage();
             }
-            if (attributes.ContainsKey("TEXCOORD_0"))
+            // Native mesh uploads cannot be subdivided; keep each on its own continuation.
+            Mesh mesh = _meshes[_meshNode];
+            if (_meshStage == 5) mesh.vertices = _positions;
+            else if (_meshStage == 6 && _normals != null) mesh.normals = _normals;
+            else if (_meshStage == 7 && _uv != null) mesh.uv = _uv;
+            else if (_meshStage == 8) mesh.triangles = _indices;
+            else if (_meshStage == 9 && _normals == null) mesh.RecalculateNormals();
+            else if (_meshStage == 10)
             {
-                if (!Accessor(Integer(attributes, "TEXCOORD_0", -1), "VEC2", 2, false) || _readCount != count) return Fail("Invalid UVs.");
-                Vector2[] uv = new Vector2[count];
-                for (int v = 0; v < count; v++)
+                mesh.RecalculateBounds();
+                Nodes[_meshNode].Filter.sharedMesh = mesh;
+                if (!FinishMaterial()) return false;
+                Nodes[_meshNode].Renderer.enabled = true; LoadedVertices += _meshCount;
+                ReleaseMeshScratch(); return true;
+            }
+            _meshStage++; return true;
+        }
+
+        private bool PrepareMeshStage()
+        {
+            if (_meshStage == 2)
+            {
+                if (_attributes.ContainsKey("NORMAL"))
                 {
-                    int at = _readStart + v * _readStride;
-                    float x = F32(at), y = F32(at + 4);
-                    if (!Finite(x, 10000f) || !Finite(y, 10000f)) return Fail("Invalid UV.");
-                    uv[v] = new Vector2(x, 1f - y);
+                    if (!Accessor(Integer(_attributes, "NORMAL", -1), "VEC3", 3, false) || _readCount != _meshCount) return Fail("Invalid normals.");
+                    _normals = new Vector3[_meshCount]; return true;
                 }
-                mesh.uv = uv;
+                _meshStage++;
             }
-            if (!Accessor(Integer(primitive, "indices", -1), "SCALAR", 1, true) || _readCount > 12288 || _readCount % 3 != 0)
-                return Fail("Invalid index buffer or per-node index limit exceeded.");
-            int[] indices = new int[_readCount];
-            for (int i = 0; i < indices.Length; i++)
+            if (_meshStage == 3)
             {
-                int at = _readStart + i * _readStride;
-                uint id = _readComponent == 5121 ? _bytes[at] : _readComponent == 5123 ? (uint)(_bytes[at] | _bytes[at + 1] << 8) : U32(at);
-                if (id >= (uint)count) return Fail("Index references a missing vertex.");
-                indices[i] = (int)id;
+                if (_attributes.ContainsKey("TEXCOORD_0"))
+                {
+                    if (!Accessor(Integer(_attributes, "TEXCOORD_0", -1), "VEC2", 2, false) || _readCount != _meshCount) return Fail("Invalid UVs.");
+                    _uv = new Vector2[_meshCount]; return true;
+                }
+                _meshStage++;
             }
-            for (int i = 0; i < indices.Length; i += 3) { int swap = indices[i + 1]; indices[i + 1] = indices[i + 2]; indices[i + 2] = swap; }
-            mesh.triangles = indices;
-            if (!attributes.ContainsKey("NORMAL")) mesh.RecalculateNormals();
-            mesh.RecalculateBounds();
-            FlareRuntimeNode node = Nodes[nodeIndex]; node.Filter.sharedMesh = mesh;
+            if (_meshStage == 4)
+            {
+                if (!Accessor(Integer(_primitive, "indices", -1), "SCALAR", 1, true) || _readCount % 3 != 0)
+                    return Fail("Invalid index buffer.");
+                _indices = new int[_readCount];
+            }
+            return true;
+        }
+
+        private void ReleaseMeshScratch()
+        {
+            _meshStage = 0; _cursor = 0;
+            _positions = null; _normals = null; _uv = null; _indices = null; _primitive = null; _attributes = null;
+        }
+
+        private bool FinishMaterial()
+        {
+            FlareRuntimeNode node = Nodes[_meshNode];
+            int materialIndex = Integer(_primitive, "material", -1);
+            if (_primitive.ContainsKey("material") && (materialIndex < 0 || materialIndex >= _materialDefs.Count)) return Fail("Invalid material reference.");
+            int slot = materialIndex + 1;
+            if (_materials[slot] != null) { node.Renderer.sharedMaterial = _materials[slot]; return true; }
             node.Renderer.sharedMaterial = MaterialTemplate;
-            Material material = node.Renderer.material; _materials[nodeIndex] = material;
-            int materialIndex = Integer(primitive, "material", -1);
-            if (primitive.ContainsKey("material") && (materialIndex < 0 || materialIndex >= _materialDefs.Count)) return Fail("Invalid material reference.");
+            Material material = node.Renderer.material; _materials[slot] = material;
+            // glTF defaults must not inherit an unrelated template's tint, texture or UV transform.
+            material.SetColor("_Color", Color.white); material.SetTexture("_MainTex", null);
+            material.mainTextureScale = Vector2.one; material.mainTextureOffset = Vector2.zero;
             if (materialIndex >= 0)
             {
                 DataDictionary mat = AsDict(_materialDefs[materialIndex]);
@@ -321,7 +397,6 @@ namespace AvatarCatalog.Remote
                     material.SetTexture("_MainTex", _textures[id]);
                 }
             }
-            node.Renderer.enabled = true; LoadedVertices += count;
             return true;
         }
 
@@ -368,7 +443,7 @@ namespace AvatarCatalog.Remote
             return values.Count == 3 ? new Vector3(Number(values[0]), Number(values[1]), Number(values[2])) : new Vector3(float.NaN, 0f, 0f);
         }
         private bool ValidVector(Vector3 p, float max) { return Finite(p.x, max) && Finite(p.y, max) && Finite(p.z, max); }
-        private bool Finite(float x, float max) { return x == x && x >= -max && x <= max; }
+        private bool Finite(float x, float max) { return x >= -max && x <= max; }
         private float F32(int at) { return BitConverter.ToSingle(_bytes, at); }
         private uint U32(int at) { return (uint)_bytes[at] | (uint)_bytes[at + 1] << 8 | (uint)_bytes[at + 2] << 16 | (uint)_bytes[at + 3] << 24; }
         private bool Fail(string error)

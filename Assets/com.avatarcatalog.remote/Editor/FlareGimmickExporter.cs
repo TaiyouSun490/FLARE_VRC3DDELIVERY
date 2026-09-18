@@ -52,6 +52,8 @@ namespace AvatarCatalog.Remote
             var materials = (JArray)document["materials"]; var accessors = (JArray)document["accessors"];
             var views = (JArray)document["bufferViews"]; var rawTextures = (JArray)document["extras"]["flare_rgba_textures"];
             int totalVertices = 0, actionCount = 0;
+            var materialIds = new Dictionary<int, int>();
+            var textureIds = new Dictionary<Texture, int>();
             using (var bin = new MemoryStream())
             using (var writer = new BinaryWriter(bin))
             {
@@ -60,7 +62,9 @@ namespace AvatarCatalog.Remote
                     // Root is the export origin. Child TRS and pivots remain intact.
                     Vector3 p = t == root.transform ? Vector3.zero : t.localPosition;
                     Quaternion q = t == root.transform ? Quaternion.identity : t.localRotation;
-                    Vector3 s = t == root.transform ? Vector3.one : t.localScale;
+                    Vector3 s = t.localScale;
+                    if (!Finite(p, 100f) || !Finite(s, 100f) || Mathf.Abs(s.x) < .001f || Mathf.Abs(s.y) < .001f || Mathf.Abs(s.z) < .001f)
+                        throw new InvalidDataException(t.name + ": transform exceeds the runtime profile.");
                     var node = new JObject { ["name"] = t.name, ["translation"] = XYZ(new Vector3(p.x, p.y, -p.z)),
                         ["rotation"] = new JArray(-q.x, -q.y, q.z, q.w), ["scale"] = XYZ(s) };
                     if (t.childCount > 0)
@@ -75,6 +79,8 @@ namespace AvatarCatalog.Remote
                     if (box != null && box.enabled)
                     {
                         if (box.isTrigger) throw new NotSupportedException("Trigger events are outside this MVP; use a non-trigger BoxCollider.");
+                        if (!Finite(box.size, 10f) || !Finite(box.center, 10f) || box.size.x <= 0 || box.size.y <= 0 || box.size.z <= 0)
+                            throw new InvalidDataException(t.name + ": collider size/center exceeds the runtime profile.");
                         gimmick["collider"] = new JObject { ["type"] = "box", ["size"] = XYZ(box.size), ["center"] = XYZ(box.center) };
                     }
                     FlareGimmickDefinition definition = t.GetComponent<FlareGimmickDefinition>();
@@ -83,9 +89,15 @@ namespace AvatarCatalog.Remote
                         if (definition.On == "interact" && (box == null || !box.enabled))
                             throw new InvalidDataException(t.name + ": Interact needs an enabled BoxCollider.");
                         gimmick["on"] = definition.On;
+                        if (string.IsNullOrEmpty(definition.On) || definition.On.Length > 64 || definition.Actions == null)
+                            throw new InvalidDataException(t.name + ": an event name (1-64 characters) and action list are required.");
                         var actions = new JArray(); gimmick["actions"] = actions;
                         foreach (FlareDeclarativeAction a in definition.Actions)
                         {
+                            if (a == null || !Finite(a.Duration, 30f) || a.Duration < 0 || !Finite(a.Value, 360f) || !Finite(a.Move, 100f) ||
+                                a.Type == FlareActionKind.setActive && a.Value != 0f && a.Value != 1f ||
+                                a.Type == FlareActionKind.emitEvent && (string.IsNullOrEmpty(a.Event) || a.Event.Length > 64))
+                                throw new InvalidDataException(t.name + ": action values exceed the runtime profile.");
                             if (++actionCount > 64) throw new InvalidDataException("Default action limit is 64.");
                             Transform target = a.Target != null ? a.Target : t;
                             if (!ids.ContainsKey(target)) throw new InvalidDataException("Action target is outside the exported root.");
@@ -129,13 +141,22 @@ namespace AvatarCatalog.Remote
                             for (int i = 0; i < triangles.Length; i += 3) { writer.Write((ushort)triangles[i]); writer.Write((ushort)triangles[i + 2]); writer.Write((ushort)triangles[i + 1]); }
                         });
                         Material material = renderer.sharedMaterial;
+                        int materialKey = material == null ? 0 : material.GetInstanceID();
+                        if (!materialIds.TryGetValue(materialKey, out int matIndex))
+                        {
                         Color color = material != null && material.HasProperty("_Color") ? material.color : Color.white;
+                        if (!Finite(color.r, 1) || !Finite(color.g, 1) || !Finite(color.b, 1) || !Finite(color.a, 1) || color.r < 0 || color.g < 0 || color.b < 0 || color.a < 0)
+                            throw new InvalidDataException(t.name + ": base color must be in [0,1].");
                         var pbr = new JObject { ["baseColorFactor"] = new JArray(color.r, color.g, color.b, color.a), ["metallicFactor"] = 0 };
                         Texture texture = material != null && material.HasProperty("_MainTex") ? material.mainTexture : null;
                         if (texture != null)
                         {
-                            if (rawTextures.Count >= 4) throw new InvalidDataException("Default texture limit is 4.");
-                            int id = rawTextures.Count;
+                            if (material.mainTextureScale != Vector2.one || material.mainTextureOffset != Vector2.zero)
+                                throw new NotSupportedException(t.name + ": bake texture tiling/offset into UVs before export.");
+                            if (!textureIds.TryGetValue(texture, out int id))
+                            {
+                            if (rawTextures.Count >= 4) throw new InvalidDataException("Default unique texture limit is 4.");
+                            id = rawTextures.Count;
                             Texture2D readable = ReadTexture(texture);
                             try
                             {
@@ -144,12 +165,16 @@ namespace AvatarCatalog.Remote
                                 int imageView = AddBytes(writer, views, readable.EncodeToPNG());
                                 ((JArray)document["images"]).Add(new JObject { ["bufferView"] = imageView, ["mimeType"] = "image/png" });
                                 ((JArray)document["textures"]).Add(new JObject { ["source"] = id });
-                                pbr["baseColorTexture"] = new JObject { ["index"] = id };
+                                textureIds.Add(texture, id);
                             }
                             finally { UnityEngine.Object.DestroyImmediate(readable); }
+                            }
+                            pbr["baseColorTexture"] = new JObject { ["index"] = id };
                         }
                         if (materials.Count >= 8) throw new InvalidDataException("Default material limit is 8.");
-                        int matIndex = materials.Count; materials.Add(new JObject { ["pbrMetallicRoughness"] = pbr });
+                        matIndex = materials.Count; materials.Add(new JObject { ["pbrMetallicRoughness"] = pbr });
+                        materialIds.Add(materialKey, matIndex);
+                        }
                         node["mesh"] = meshes.Count;
                         meshes.Add(new JObject { ["primitives"] = new JArray(new JObject { ["attributes"] = attrs, ["indices"] = indices, ["material"] = matIndex, ["mode"] = 4 }) });
                     }
@@ -172,10 +197,13 @@ namespace AvatarCatalog.Remote
             if (header + 8L + binLength != glb.Length || BitConverter.ToUInt32(glb, header + 4) != 0x004e4942u)
                 throw new InvalidDataException("Invalid BIN chunk.");
             JObject doc = JObject.Parse(Encoding.UTF8.GetString(glb, 20, jsonLength));
-            var views = (JArray)doc["bufferViews"];
+            var views = (JArray)doc["bufferViews"] ?? new JArray();
+            doc["bufferViews"] = views;
             var textures = (JArray)doc["textures"] ?? new JArray(); var images = (JArray)doc["images"] ?? new JArray();
             if (textures.Count > 4) throw new InvalidDataException("Default texture limit is 4.");
             var prepared = new JArray();
+            var oldPrepared = doc["extras"]?["flare_rgba_textures"] as JArray;
+            var sourceTextures = new Dictionary<int, JObject>();
             if (doc["extras"] == null) doc["extras"] = new JObject();
             doc["extras"]["flare_rgba_textures"] = prepared;
             using (var bin = new MemoryStream())
@@ -186,6 +214,7 @@ namespace AvatarCatalog.Remote
                 {
                     int source = (int?)texture["source"] ?? -1;
                     if (source < 0 || source >= images.Count) throw new InvalidDataException("Invalid texture source.");
+                    if (sourceTextures.TryGetValue(source, out JObject cached)) { prepared.Add(cached.DeepClone()); continue; }
                     JObject image = (JObject)images[source];
                     int viewIndex = (int?)image["bufferView"] ?? -1;
                     if (image["uri"] != null || viewIndex < 0 || viewIndex >= views.Count) throw new InvalidDataException("Only embedded PNG/JPEG is supported.");
@@ -199,7 +228,27 @@ namespace AvatarCatalog.Remote
                         if (!ImageConversion.LoadImage(decoded, encoded) || decoded.width > 512 || decoded.height > 512)
                             throw new InvalidDataException("Image decoding failed or dimension exceeds 512. Resize before preparation.");
                         Texture2D rgba = ReadTexture(decoded);
-                        try { prepared.Add(new JObject { ["width"] = rgba.width, ["height"] = rgba.height, ["bufferView"] = AddBytes(writer, views, rgba.GetRawTextureData()) }); }
+                        try
+                        {
+                            byte[] pixels = rgba.GetRawTextureData();
+                            int reuse = -1;
+                            // Reuse only byte-identical validated raw data; edited embedded images are still refreshed.
+                            if (oldPrepared != null && prepared.Count < oldPrepared.Count && oldPrepared[prepared.Count] is JObject old)
+                            {
+                                int oldView = (int?)old["bufferView"] ?? -1;
+                                if ((int?)old["width"] == rgba.width && (int?)old["height"] == rgba.height && oldView >= 0 && oldView < views.Count && views[oldView] is JObject raw)
+                                {
+                                    int start = (int?)raw["byteOffset"] ?? 0;
+                                    if ((int?)raw["buffer"] == 0 && raw["byteStride"] == null && (int?)raw["byteLength"] == pixels.Length && start >= 0 && (long)start + pixels.Length <= binLength)
+                                    {
+                                        reuse = oldView;
+                                        for (int p = 0; p < pixels.Length; p++) if (pixels[p] != glb[header + 8 + start + p]) { reuse = -1; break; }
+                                    }
+                                }
+                            }
+                            var entry = new JObject { ["width"] = rgba.width, ["height"] = rgba.height, ["bufferView"] = reuse >= 0 ? reuse : AddBytes(writer, views, pixels) };
+                            prepared.Add(entry); sourceTextures.Add(source, entry);
+                        }
                         finally { UnityEngine.Object.DestroyImmediate(rgba); }
                     }
                     finally { UnityEngine.Object.DestroyImmediate(decoded); }
@@ -262,5 +311,7 @@ namespace AvatarCatalog.Remote
                 ["extras"] = new JObject { ["flare_rgba_textures"] = new JArray() } };
         }
         private static JArray XYZ(Vector3 v) { return new JArray(v.x, v.y, v.z); }
+        private static bool Finite(float value, float maximum) { return value >= -maximum && value <= maximum; }
+        private static bool Finite(Vector3 value, float maximum) { return Finite(value.x, maximum) && Finite(value.y, maximum) && Finite(value.z, maximum); }
     }
 }

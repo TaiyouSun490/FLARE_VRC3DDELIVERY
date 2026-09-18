@@ -23,10 +23,12 @@ VRChatの[World Component許可リスト](https://creators.vrchat.com/worlds/whi
 1. 一つの親GameObject以下にモデルを配置する。ドアは回転させたい蝶番位置を親ノードの原点にする。
 2. 動作を持たせるノードへ`FlareGimmickDefinition`を付ける。`GimmickId`は一意で永続的なID、`On`は`interact`または任意のローカルイベント名。
 3. Actionsに操作を追加し、Targetへ同じ親以下のTransformを指定する。Interactするボタンには有効な非TriggerのBoxColliderを付ける。
-4. 親を選び、`Tools > FLARE > Export Selected Gimmick GLB...`で保存する。親の位置・回転は書き出し原点として正規化され、子の位置・回転・スケール・階層を保持する。
+4. 親を選び、`Tools > FLARE > Export Selected Gimmick GLB...`で保存する。親の位置・回転は書き出し原点として正規化され、親自身のlocalScaleと子の位置・回転・スケール・階層を保持する。選択した親より上のTransformは含めない。
 5. GLBを公開HTTPSへ置き、PrefabのURL入力から読み込む。音声はInterpreterのAudioIds / AudioClipsへワールド作者が事前登録する。
 
 通常のGLBを使う場合、PNG/JPEGがあるファイルは`Prepare Existing GLB Textures...`で準備してから配信する。この処理は画像をGLBのBIN内のRGBA32へ追加し、既存extrasを維持する。Geometryの未対応機能まで変換するツールではない。
+
+同一のMaterial/Texture参照は重複排除する。準備済みの同一RGBA領域は再利用するため、変更せずに再準備しても増量しない。テクスチャのtiling/offsetはUVへ焼き込んでからエクスポートする。
 
 ## メタデータ
 
@@ -63,6 +65,10 @@ GLBのTRS・GeometryはglTF座標からZ反転とwinding補正でUnityへ変換�
 - `FlareRuntimeNode`: 事前搭載のMeshFilter / MeshRenderer / BoxCollider / AudioSource / UdonBehaviour。ランタイムAddComponentなし。
 - `FlareGimmickInterpreter`: ID解決、許可操作、イベントキュー、固定数のTween。ホスト側のAudio allowlistと負荷ポリシーは外部データで上書き不可。
 
+メッシュの数値復元は `MeshElementsPerFrame`（既定128、16〜512）で分割する。値を小さくするとフレーム負荷を抑え、完了までのフレーム数は増える。静止ノードは毎フレーム更新しない。イベントとAudioClipは読み込み時に解決するため、Audio allowlist変更後は再ロードする。
+
+破綻修正・計算量・回帰試験の詳細は [アルゴリズム点検記録](FLARE-gimmick-algorithm-audit-2026-09-18.md) を参照。
+
 ## 上限と対象外
 
 既定は16 nodes（設定上限32）、階層16段、16,000 vertices合計（最大40,000）、2,048 vertices/node（最大4,096）、12,288 indices/node、8 material定義（最大16）、4 textures、512px、10MB/GLB、256KiB/JSON、64 actions（最大128）。1 dispatchは最大32 events（設定上限64）かつ128実行操作まで、毎秒16 dispatchまで。イベントの循環は次フレームへ持ち越さない。
@@ -78,6 +84,8 @@ MVPはLocal-only。生成GameObjectを同期オブジェクトとは扱わない
 `AvatarCatalog.Remote.FlareGimmickRegression.RunBatch`がデモをコンパイル済みUdon VMへ渡し、実Interactイベント・階層・Tween・表示・音声参照・再読込・不正データ・循環上限・テクスチャを検証する。結果は`Library/FlareGimmickRegression.result`。外部ネットワークとヘッドセットの操作検証とは別に記録する。
 
 ### 2026-09-18 実行結果
+
+アルゴリズム修正後の再試験は **67 assertions PASS / Network=True**（Editor書き出し＋実Udon VM）。位置上限判定、静止時のノードTick 0回、上限サイズメッシュの128要素分割、途中キャンセル、スケール・材質の維持まで追加検証した。詳細・残る制限は [点検記録](FLARE-gimmick-algorithm-audit-2026-09-18.md) を参照。以下の36項目は初回MVP時の記録。
 
 - UdonSharpコンパイル成功。
 - `RunNetworkBatch`: **36 assertions PASS / Network=True**。保存済みPrefabのLOAD DEMOボタンを発火→GitHub rawから実ダウンロード→解析→実Udon Interactイベント→ドア90度・移動・非表示・許可音声まで確認。CLEARボタンの保存済み接続も確認。
