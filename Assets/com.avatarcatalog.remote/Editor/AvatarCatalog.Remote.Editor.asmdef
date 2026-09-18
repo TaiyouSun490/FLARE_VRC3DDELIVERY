@@ -1,0 +1,26 @@
+{
+  "name": "AvatarCatalog.Remote.Editor",
+  "rootNamespace": "AvatarCatalog.Remote",
+  "references": [
+    "AvatarCatalog.Remote.Runtime",
+    "AvatarCatalog.Remote.Authoring",
+    "UdonSharp.Editor",
+    "UdonSharp.Runtime",
+    "UnityEngine.UI",
+    "VRC.SDK3",
+    "VRC.SDKBase",
+    "VRC.Udon",
+    "VRC.Udon.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

@@ -1,0 +1,21 @@
+{
+  "name": "com.avatarcatalog.remote",
+  "displayName": "Remote Avatar Catalog",
+  "version": "0.2.4",
+  "unity": "2022.3",
+  "description": "Unified RAC2 Creator and VRChat ImagePad runtime for multi-mesh, multi-material, VAT, particles, portable exhibits, and product metadata.",
+  "keywords": [
+    "vrchat",
+    "udon",
+    "catalog",
+    "rac2",
+    "vat",
+    "particles"
+  ],
+  "author": {
+    "name": "Remote Avatar Catalog contributors"
+  },
+  "vpmDependencies": {
+    "com.vrchat.worlds": ">=3.7.0"
+  }
+}
