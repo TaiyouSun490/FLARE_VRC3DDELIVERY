@@ -2,6 +2,12 @@
 
 Federated Library for Avatar Retrieval & Embodiment
 
+## この機能ブランチ: 宣言型GLBギミック
+
+既存RAC2とは独立したMVPを追加しています。GLBの階層・モデル・準備済み画像と、`extras.vrc_gimmick`のEvent→Actionをロードします。Interact、移動・回転Tween、表示切替、ワールド登録音声、ローカルイベントをサポートします。任意コードやComponentは配信できません。
+
+`Assets/FLAREGimmicks/FLARE-GLB-Gimmick-Player.prefab`を配置し、**LOAD DEMO**から試せます。[作り方・対応範囲・安全制限](Docs/FLARE-declarative-gimmicks.md)を参照してください。MVPはLocal-onlyで、全GLB機能やVRChat許可Component全種類への対応ではありません。
+
 公開HTTPS上のRAC2ファイルから、VRChatワールド内に3Dモデル・VATアニメーション・パーティクルを読み込むUnityギミックです。
 
 ## 現在の版
