@@ -11,7 +11,7 @@ namespace AvatarCatalog.Remote
     {
         private const string PrefabPath = "Assets/NightSlotMall/Prefabs/RAC-3D-ImagePad.prefab";
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Installers/Install RAC2 Interaction Support")]
+        [MenuItem("Tools/FLARE/Developer/Installers/Install RAC2 Interaction Support")]
         public static void Install()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)

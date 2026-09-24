@@ -80,7 +80,7 @@ and keep width `3`, depth `3`, height `2.7`, and boundary tolerance `0.005`.
 
 Run:
 
-`Tools > Avatar Catalog > Run Booth Authoring Self-Test`
+`Tools > FLARE > Developer > Tests > RAC1 > Run Booth Authoring Self-Test`
 
 The test verifies the floor guide dimensions, visibility toggle and authoring-only
 export exclusion. It also creates one static shop mesh and one skinned avatar mesh,
@@ -95,5 +95,5 @@ Unity.exe -batchmode -quit -projectPath <project> \
   -logFile <log-path>
 ```
 
-The older single-renderer `Tools > Avatar Catalog > RAC1 Exporter` remains
+The older single-renderer `Tools > FLARE > Developer > Legacy Exporters > RAC1 Exporter` remains
 available and its API/format are unchanged.

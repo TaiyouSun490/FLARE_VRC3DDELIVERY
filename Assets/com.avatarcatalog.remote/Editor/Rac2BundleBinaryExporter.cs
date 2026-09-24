@@ -56,9 +56,9 @@ namespace AvatarCatalog.Remote
         private const int BundleMaxRenderNodes = 16;
         private const int BundleMaxMaterials = 64;
         private const int BundleMaxParticleEmitters = 4;
-        private const int BundleMaxVertices = 40000;
-        private const int BundleMaxIndices = 120000;
-        private const int BundleMaxBytes = 67108864;
+        private const int BundleMaxVertices = Rac2Capacity.MaxVertices;
+        private const int BundleMaxIndices = Rac2Capacity.MaxIndices;
+        private const int BundleMaxBytes = Rac2Capacity.MaxBytes;
 
         public static BundleExportSummary ExportBundle(
             BundleData bundle,
@@ -82,6 +82,7 @@ namespace AvatarCatalog.Remote
             int vertexCount;
             int indexCount;
             int vatNodeCount;
+            Bounds serializedBounds;
             var sharedTextures = shareTextures ? new Dictionary<string, int>() : null;
             byte[] nodeBytes = BuildBundleNodes(
                 bundle.RenderNodes,
@@ -90,7 +91,8 @@ namespace AvatarCatalog.Remote
                 out materialCount,
                 out vertexCount,
                 out indexCount,
-                out vatNodeCount);
+                out vatNodeCount,
+                out serializedBounds);
             int particleMaximum;
             byte[] particleBytes = BuildBundleParticles(
                 bundle.ParticleEmitters,
@@ -100,11 +102,14 @@ namespace AvatarCatalog.Remote
             if (materialCount > BundleMaxMaterials)
                 throw new InvalidOperationException("RAC2 supports at most 64 materials per product.");
             if (vertexCount > BundleMaxVertices || indexCount > BundleMaxIndices)
-                throw new InvalidOperationException("RAC2 product exceeds 40,000 vertices or 120,000 indices.");
+                throw new InvalidOperationException("RAC2 product exceeds 250,000 vertices or 500,000 triangles (PC safety ceiling).");
 
             var sections = new List<Section>
             {
-                new Section { Type = "META", Bytes = BuildMeta(bundle.Bounds, Color.white) },
+                // Caller-provided/renderer culling bounds may be inflated or stale.
+                // Match the exact per-node bounds reconstructed by the runtime.
+                new Section { Type = "META", Bytes = BuildMeta(
+                    bundle.RenderNodes.Count > 0 ? serializedBounds : bundle.Bounds, Color.white) },
                 new Section
                 {
                     Type = "SCNE",
@@ -125,7 +130,7 @@ namespace AvatarCatalog.Remote
             long uncompressedTotal = 24L + sections.Count * 16L;
             foreach (Section section in sections) uncompressedTotal += section.Bytes.LongLength;
             if (uncompressedTotal > BundleMaxBytes)
-                throw new InvalidOperationException("RAC2 product exceeds the 64 MB decoded limit.");
+                throw new InvalidOperationException("RAC2 product exceeds the 128 MiB decoded limit.");
 
             int compressedCount;
             byte[] file = BuildBundleContainer(sections, compressSections, shareTextures, out compressedCount);
@@ -180,12 +185,16 @@ namespace AvatarCatalog.Remote
             out int materialTotal,
             out int vertexTotal,
             out int indexTotal,
-            out int vatTotal)
+            out int vatTotal,
+            out Bounds serializedBounds)
         {
             materialTotal = 0;
             vertexTotal = 0;
             indexTotal = 0;
             vatTotal = 0;
+            serializedBounds = default(Bounds);
+            bool boundsInitialized = false;
+            Vector3 bundleMin = Vector3.zero, bundleMax = Vector3.zero;
             using (var stream = new MemoryStream())
             using (var writer = new BinaryWriter(stream))
             {
@@ -214,6 +223,17 @@ namespace AvatarCatalog.Remote
                     Color32[] colors = node.Mesh.colors32;
                     Vector4[] tangents = node.Mesh.tangents;
                     VatPayload vat = node.Vat == null ? null : BuildVat(node.Vat, positions.Length);
+                    Bounds localBounds = vat == null ? BoundsFromPositions(positions) : vat.Bounds;
+                    for (int corner = 0; corner < 8; corner++)
+                    {
+                        Vector3 local = new Vector3(
+                            (corner & 1) == 0 ? localBounds.min.x : localBounds.max.x,
+                            (corner & 2) == 0 ? localBounds.min.y : localBounds.max.y,
+                            (corner & 4) == 0 ? localBounds.min.z : localBounds.max.z);
+                        Vector3 point = node.LocalPosition + node.LocalRotation * Vector3.Scale(local, node.LocalScale);
+                        if (!boundsInitialized) { bundleMin = point; bundleMax = point; boundsInitialized = true; }
+                        else { bundleMin = Vector3.Min(bundleMin, point); bundleMax = Vector3.Max(bundleMax, point); }
+                    }
                     Vector2[] uv1 = vat == null ? node.Mesh.uv2 : vat.Uv1;
                     MeshAttributes attributes = BundleAttributes(positions, normals, uv, uv1, colors, tangents);
                     ValidateBundleMaterials(node.Materials, subMeshCount, attributes);
@@ -275,9 +295,23 @@ namespace AvatarCatalog.Remote
                     indexTotal += nodeIndexCount;
                     if (vat != null) vatTotal++;
                 }
+                if (boundsInitialized) serializedBounds = new Bounds((bundleMin + bundleMax) * .5f, bundleMax - bundleMin);
                 writer.Flush();
                 return stream.ToArray();
             }
+        }
+
+        private static Bounds BoundsFromPositions(Vector3[] positions)
+        {
+            if (positions == null || positions.Length == 0) throw new InvalidDataException("Mesh has no positions.");
+            Vector3 min = positions[0], max = positions[0];
+            foreach (var value in positions)
+            {
+                if (!FiniteVector(value)) throw new InvalidDataException("Mesh contains an invalid position.");
+                min = Vector3.Min(min, value);
+                max = Vector3.Max(max, value);
+            }
+            return new Bounds((min + max) * .5f, max - min);
         }
 
         private static MeshAttributes BundleAttributes(
@@ -506,7 +540,7 @@ namespace AvatarCatalog.Remote
                 }
                 total = checked(total + section.StoredBytes.Length);
             }
-            if (total > BundleMaxBytes) throw new InvalidOperationException("RAC2 product exceeds the 64 MB stored limit.");
+            if (total > BundleMaxBytes) throw new InvalidOperationException("RAC2 product exceeds the 128 MiB stored limit.");
 
             using (var stream = new MemoryStream(total))
             using (var writer = new BinaryWriter(stream))

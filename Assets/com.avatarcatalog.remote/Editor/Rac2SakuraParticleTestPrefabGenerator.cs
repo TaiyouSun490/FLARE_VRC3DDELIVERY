@@ -18,7 +18,7 @@ namespace AvatarCatalog.Remote
                 EditorApplication.delayCall += CreateSample;
         }
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Samples/Create Sakura Particle Test Prefab")]
+        [MenuItem("Tools/FLARE/Developer/Samples/Create Sakura Particle Test Prefab")]
         private static void CreateSample()
         {
             EnsureFolders();

@@ -8,7 +8,7 @@ namespace AvatarCatalog.Remote
     [CustomEditor(typeof(Rac1BoothAuthoring))]
     public sealed class Rac1BoothAuthoringEditor : Editor
     {
-        private const string CreateMenuPath = "GameObject/Avatar Catalog/Create RAC1 Booth Authoring Root";
+        private const string CreateMenuPath = "GameObject/FLARE/Developer/Create RAC1 Booth Authoring Root";
 
         private SerializedProperty avatarRootProperty;
         private SerializedProperty shopRootProperty;

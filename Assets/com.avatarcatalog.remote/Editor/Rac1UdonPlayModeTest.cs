@@ -24,7 +24,7 @@ namespace AvatarCatalog.Remote
     /// </summary>
     public static class Rac1UdonPlayModeTest
     {
-        private const string MenuRoot = "Tools/Avatar Catalog/Developer/Tests/RAC1 Udon Play Mode/";
+        private const string MenuRoot = "Tools/FLARE/Developer/Tests/RAC1 Udon Play Mode/";
         private const string SourceScenePath = "Assets/AvatarCatalogRoundTrip/XBot-RoundTrip.unity";
         private const string TargetScenePath = "Assets/AvatarCatalogRoundTrip/XBot-Udon-PlayMode.unity";
         private const string Rac1AssetPath = "Assets/AvatarCatalogRoundTrip/XBot.rac1";

@@ -47,7 +47,7 @@ namespace AvatarCatalog.Remote
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
         }
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Tests/Run Complete RAC2 Udon VM")]
+        [MenuItem("Tools/FLARE/Developer/Tests/Run Complete RAC2 Udon VM")]
         public static void Run()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)

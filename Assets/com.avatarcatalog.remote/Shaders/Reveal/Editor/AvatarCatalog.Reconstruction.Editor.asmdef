@@ -1,0 +1,6 @@
+{
+  "name": "AvatarCatalog.Reconstruction.Editor",
+  "references": ["lilToon.Editor"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}

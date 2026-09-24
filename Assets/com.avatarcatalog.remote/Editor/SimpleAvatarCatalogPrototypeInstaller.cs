@@ -20,7 +20,7 @@ namespace AvatarCatalog.Remote
     /// <summary>Builds the three-avatar catalog MVP without modifying the RAC booth prefab.</summary>
     public static class SimpleAvatarCatalogPrototypeInstaller
     {
-        private const string MenuPath = "Tools/Avatar Catalog/Developer/Installers/Install 3 Avatar Catalog %#3";
+        private const string MenuPath = "Tools/FLARE/Developer/Installers/Install 3 Avatar Catalog %#3";
         private const string ScenePath = "Assets/NightSlotMall/Scenes/NightSlot-Mall-Prototype.unity";
         private const string AnchorName = "BoothAnchor_002";
         private const string RootName = "Avatar Catalog - 3 Avatar MVP";

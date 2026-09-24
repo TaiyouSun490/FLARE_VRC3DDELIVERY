@@ -18,7 +18,7 @@ namespace AvatarCatalog.Remote
         private const string PlayerProgramPath = "Assets/NightSlotMall/Udon/Rac2ParticlePlayer.asset";
         private const int PoolSize = 32;
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Installers/Install RAC2 Particle Support")]
+        [MenuItem("Tools/FLARE/Developer/Installers/Install RAC2 Particle Support")]
         public static void Install()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)

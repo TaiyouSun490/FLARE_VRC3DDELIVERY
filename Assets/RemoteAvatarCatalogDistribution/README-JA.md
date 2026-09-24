@@ -1,4 +1,6 @@
-# Remote Avatar Catalog — Complete RAC2 ImagePad 0.2.4
+# FLARE — RAC2 ImagePad
+
+初めて使う方は [日本語の使い方](USER-GUIDE-JA.md) / [English user guide](USER-GUIDE-EN.md) を参照してください。本書は技術概要・変更履歴です。
 
 ## 0.2.4 の変更と互換性
 
@@ -26,13 +28,18 @@ Texture2D の GPU 転送や Unity の単体 Mesh API は分割できないため
 1. Unity 2022.3.22f1 の VRChat Worlds プロジェクトへ、VRChat Worlds SDK と lilToon を先に導入します。
 2. unitypackage を Import します。
 3. 使用する Prefab を Scene へ配置します。
-4. PC 向け World として Build し、World の `Allow Untrusted URLs` を有効にします。
+4. PC 向けWorldとしてビルドします。信頼済み以外のURLを使う利用者はVRChat側の `Allow Untrusted URLs` を有効にします。
 5. 実行時に、認証不要の公開 HTTPS `.rac2` URL を入力して `LOAD RAC2` を押します。
 
 ## RAC2 を作る
 
+入口は `Tools > FLARE > RAC2 Creator...` に統一しています。Hierarchy の右クリックからも
+`FLARE > Create RAC2 from this object...` を利用できます。
+`FLARE > Developer` は開発・検証・旧形式向けです。通常の作成には使いません。
+メニュー名のみの整理なので、既存の Prefab・RAC2 ファイル・パッケージ識別子は変更していません。
+
 1. 展示物を 1 個のルート GameObject 以下へまとめて選択します。
-2. `Tools > Avatar Catalog > RAC2 Creator...` を開きます。
+2. `Tools > FLARE > RAC2 Creator...` を開きます。
 3. Scene ビューの「保存後の配置」を確認します。Root の位置や Pivot は関係なく、保存時に展示物を自動で床置き・中央寄せします。
 4. 赤い場合だけ `大きすぎる要素を選択` を使い、表示された横幅・高さ・奥行の超過分だけモデル／VATを小さくします。ParticleSystem はこの判定の対象外です。
 5. 必要なら Animation Clip、Particle、商品情報、Portable を設定します。
@@ -67,7 +74,7 @@ ImagePad はロード開始前のローカル FPS を基準に、RAC2 の展開�
 - 最大 16 renderer node
 - 最大 64 material slot
 - 最大 4 particle emitter、各 32 particle
-- 合計 40,000 vertices / 120,000 indices
+- 合計250,000頂点 / 1,500,000インデックス（500,000三角形）、保存・展開後それぞれ128 MiB
 - VAT 2～240 frames、1～60 FPS
 - lilToon Opaque / Cutout、Main Texture、Normal Map
 - Collider / Portable / VRC Pickup

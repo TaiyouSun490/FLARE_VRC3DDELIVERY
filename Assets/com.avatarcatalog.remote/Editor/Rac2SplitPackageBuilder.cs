@@ -21,7 +21,7 @@ namespace AvatarCatalog.Remote
         private const string ImagePadBuild = "Builds/RemoteAvatarCatalog-ImagePad-0.1.0/RemoteAvatarCatalog-ImagePad-0.1.0.unitypackage";
         private const string GimmickBuild = "Builds/RAC2-Pedestal-Gimmick-0.1.0/RAC2-Pedestal-Gimmick-0.1.0.unitypackage";
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Build/Pack Split Legacy RAC2 Releases")]
+        [MenuItem("Tools/FLARE/Developer/Build/Pack Split Legacy RAC2 Releases")]
         public static void Build()
         {
             Require<GameObject>(ImagePad);

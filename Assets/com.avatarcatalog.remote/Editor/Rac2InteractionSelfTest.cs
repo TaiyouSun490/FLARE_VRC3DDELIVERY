@@ -10,7 +10,7 @@ namespace AvatarCatalog.Remote
 {
     public static class Rac2InteractionSelfTest
     {
-        [MenuItem("Tools/Avatar Catalog/Developer/Tests/Run RAC2 Interaction Self-Test")]
+        [MenuItem("Tools/FLARE/Developer/Tests/Run RAC2 Interaction Self-Test")]
         public static void RunMenu()
         {
             Run();

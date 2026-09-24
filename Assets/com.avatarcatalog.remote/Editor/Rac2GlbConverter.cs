@@ -16,7 +16,7 @@ namespace AvatarCatalog.Remote
         private const uint BinChunk = 0x004e4942u;
         private const int MaximumSourceBytes = 50_000_000;
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Legacy Exporters/Convert GLB to RAC2...")]
+        [MenuItem("Tools/FLARE/Developer/Legacy Exporters/Convert GLB to RAC2...")]
         public static void ConvertInteractive()
         {
             string input = EditorUtility.OpenFilePanel("Select GLB 2.0", "", "glb");

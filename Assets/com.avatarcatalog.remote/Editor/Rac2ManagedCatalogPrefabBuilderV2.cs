@@ -21,7 +21,7 @@ namespace AvatarCatalog.Remote
         private const string ScriptPath = "Assets/com.avatarcatalog.remote/Runtime/Rac2ManagedCatalogControllerV2.cs";
         private const string ProgramPath = UdonFolder + "/Rac2ManagedCatalogControllerV2.asset";
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Build/Build Managed Avatar Catalog Discovery Gimmick")]
+        [MenuItem("Tools/FLARE/Developer/Build/Build Managed Avatar Catalog Discovery Gimmick")]
         public static void Build()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Exit Play Mode first.");

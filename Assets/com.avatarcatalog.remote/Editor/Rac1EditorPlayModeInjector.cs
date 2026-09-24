@@ -9,7 +9,7 @@ namespace AvatarCatalog.Remote
     /// </summary>
     public static class Rac1EditorPlayModeInjector
     {
-        private const string MenuPath = "Tools/Avatar Catalog/Developer/Tests/RAC1 Udon Play Mode/Inject Downloaded RAC1 into Selected Loader...";
+        private const string MenuPath = "Tools/FLARE/Developer/Tests/RAC1 Udon Play Mode/Inject Downloaded RAC1 into Selected Loader...";
 
         [MenuItem(MenuPath)]
         public static void PickAndInjectDownloadedRac1()

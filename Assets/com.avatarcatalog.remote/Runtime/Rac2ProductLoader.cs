@@ -64,6 +64,21 @@ namespace AvatarCatalog.Remote
         private bool _standardChecksum;
         private string _parseError = "Invalid RAC2.";
 
+        private void Start()
+        {
+            bool japanese = ProductController != null && ProductController.UseJapanese;
+            Text[] captions = GetComponentsInChildren<Text>(true);
+            for (int i = 0; i < captions.Length; i++)
+            {
+                string value = captions[i].text;
+                if (value == "LOAD PRODUCT") captions[i].text = japanese ? "商品情報を読み込む" : value;
+                if (value == "RETRY") captions[i].text = japanese ? "再試行" : value;
+                if (value == "CLEAR") captions[i].text = japanese ? "表示を消す" : value;
+                if (value == "RAC2 PRODUCT PEDESTAL") captions[i].text = japanese ? "FLARE 商品ペデスタル" : "FLARE Product Pedestal";
+            }
+            if (Status == StatusIdle) SetStatus("Idle");
+        }
+
         public void LoadFromInput()
         {
             if (UrlInput != null) RuntimeUrl = UrlInput.GetUrl();
@@ -456,7 +471,20 @@ namespace AvatarCatalog.Remote
         private void SetStatus(string message)
         {
             StatusMessage = message;
-            if (StatusText != null) StatusText.text = message;
+            if (StatusText == null) return;
+            bool japanese = ProductController != null && ProductController.UseJapanese;
+            if (!japanese) { StatusText.text = message; return; }
+            if (message == "Idle") StatusText.text = "公開HTTPSの.rac2 URLを入力してください。";
+            else if (message == "Product ready") StatusText.text = "商品情報を読み込みました。";
+            else if (message == "Downloading RAC2 product metadata...") StatusText.text = "RAC2の商品情報をダウンロード中…";
+            else if (Status == StatusError)
+            {
+                if (LastError == "Enter a RAC2 API URL first.") StatusText.text = "RAC2のHTTPS URLを入力してください。";
+                else if (LastError == "RAC2 exceeds the 64 MB limit.") StatusText.text = "ペデスタル単体版の上限64 MiBを超えています。ファイルを小さくしてください。";
+                else if (LastHttpErrorCode != 0) StatusText.text = "ダウンロードに失敗しました。URL・公開設定・Allow Untrusted URLsを確認してください。HTTP: " + LastHttpErrorCode;
+                else StatusText.text = "商品情報を読み込めません。Creatorでカタログ情報を含めて再作成してください。技術情報はConsoleを確認してください。";
+            }
+            else StatusText.text = "RAC2の商品情報を処理中…";
         }
     }
 }

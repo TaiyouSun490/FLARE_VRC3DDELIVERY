@@ -34,7 +34,7 @@ namespace AvatarCatalog.Remote
             };
         }
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Tests/Run RAC2 VAT Self-Test")]
+        [MenuItem("Tools/FLARE/Developer/Tests/Run RAC2 VAT Self-Test")]
         public static void RunMenu()
         {
             Run();

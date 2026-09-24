@@ -13,7 +13,7 @@ namespace AvatarCatalog.Remote
         private int _slotCapacity = 64;
         private int _pageCapacity = 6;
 
-        [MenuItem("Tools/Avatar Catalog/Catalog/Configure Fixed URLs...")]
+        [MenuItem("Tools/FLARE/Catalog/Configure Fixed URLs...")]
         private static void Open()
         {
             var window = GetWindow<Rac2ManagedCatalogUrlConfigurator>("Managed Catalog URLs");

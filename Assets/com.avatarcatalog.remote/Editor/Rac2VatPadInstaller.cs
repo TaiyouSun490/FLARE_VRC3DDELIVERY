@@ -31,7 +31,7 @@ namespace AvatarCatalog.Remote
             };
         }
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Installers/Install RAC2 VAT Support")]
+        [MenuItem("Tools/FLARE/Developer/Installers/Install RAC2 VAT Support")]
         public static void Install()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)

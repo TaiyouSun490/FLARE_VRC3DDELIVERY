@@ -16,7 +16,7 @@ namespace AvatarCatalog.Remote
         private bool _hasCollider = true;
         private bool _portable;
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Legacy Exporters/Export SkinnedMesh Animation to RAC2 VAT...")]
+        [MenuItem("Tools/FLARE/Developer/Legacy Exporters/Export SkinnedMesh Animation to RAC2 VAT...")]
         private static void Open()
         {
             Rac2VatExporterWindow window = GetWindow<Rac2VatExporterWindow>("RAC2 VAT Export");

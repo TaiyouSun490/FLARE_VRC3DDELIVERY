@@ -1,0 +1,23 @@
+        [Toggle] _RacRevealEnabled ("Reconstruction Enabled", Float) = 0
+        _RacRevealStart ("Reconstruction Start", Float) = 0
+        _RacRevealDuration ("Reconstruction Duration", Float) = 2.25
+        _RacRevealProgressOverride ("Preview Progress (-1 = clock)", Float) = -1
+        _RacRevealCellSize ("Block Size (exhibit meters)", Float) = 0.08
+        _RacRevealScatter ("Block Scatter", Float) = 1.5
+        _RacRevealEdgeWidth ("Edge Width (exhibit meters)", Float) = 0.065
+        [HDR] _RacRevealEdgeColor ("Edge Emission", Color) = (1.5,3.8,5,1)
+        _RacRevealInflation ("Edge Inflation (exhibit meters)", Float) = 0.018
+        _RacRevealHeight ("Exhibit Min / Max Height", Vector) = (0,2,0,0)
+        [Toggle] _RacVatEnabled ("VAT Enabled", Float) = 0
+        [HideInInspector] _VatPositionTex ("VAT Position", 2D) = "black" {}
+        [HideInInspector] _VatNormalTex ("VAT Normal", 2D) = "gray" {}
+        [HideInInspector] _VatFrameCount ("VAT Frames", Float) = 2
+        [HideInInspector] _VatRowsPerFrame ("VAT Rows", Float) = 1
+        [HideInInspector] _VatTextureHeight ("VAT Height", Float) = 2
+        [HideInInspector] _VatFps ("VAT FPS", Float) = 30
+        [HideInInspector] _VatSpeed ("VAT Speed", Float) = 1
+        [HideInInspector] _VatLoop ("VAT Loop", Float) = 1
+        [HideInInspector] _VatHasNormal ("VAT Has Normal", Float) = 0
+        [HideInInspector] _VatStartTime ("VAT Start", Float) = 0
+        [HideInInspector] _VatBoundsMin ("VAT Min", Vector) = (0,0,0,0)
+        [HideInInspector] _VatBoundsSize ("VAT Size", Vector) = (1,1,1,0)

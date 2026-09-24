@@ -21,7 +21,7 @@ namespace AvatarCatalog.Remote
             EditorApplication.update += ConsumeRequest;
         }
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Tests/Run Composite RAC2 Round Trip")]
+        [MenuItem("Tools/FLARE/Developer/Tests/Run Composite RAC2 Round Trip")]
         public static void Run()
         {
             string output = Path.GetFullPath("Library/Rac2CompositeSelfTest.rac2");

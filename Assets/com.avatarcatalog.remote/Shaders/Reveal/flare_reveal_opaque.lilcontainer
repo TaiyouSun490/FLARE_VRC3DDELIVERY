@@ -1,0 +1,18 @@
+Shader "Avatar Catalog/lilToon Reconstruction opaque"
+{
+    Properties
+    {
+        lilProperties "Default"
+        lilProperties "DefaultOpaque"
+        lilProperties "RevealProperties.lilblock"
+    }
+    HLSLINCLUDE
+        #define LIL_RENDER 0
+        #define LIL_FEATURE_NORMAL_1ST
+        #define LIL_REQUIRE_APP_TEXCOORD1
+        #define LIL_REQUIRE_APP_NORMAL
+    ENDHLSL
+    lilSubShaderInsert "RevealInsert.hlsl"
+    lilSubShaderBRP "Default"
+    CustomEditor "AvatarCatalog.Remote.Editor.ReconstructionInspector"
+}

@@ -14,7 +14,7 @@ namespace AvatarCatalog.Remote
     /// </summary>
     public static class Rac1RoundTripTest
     {
-        private const string MenuPath = "Tools/Avatar Catalog/Developer/Tests/RAC1/Create X Bot Round-Trip Test";
+        private const string MenuPath = "Tools/FLARE/Developer/Tests/RAC1/Create X Bot Round-Trip Test";
         private const string XBotAssetPath = "Assets/TestAssets/X Bot.fbx";
         private const string OutputFolder = "Assets/AvatarCatalogRoundTrip";
         private const string Rac1AssetPath = OutputFolder + "/XBot.rac1";

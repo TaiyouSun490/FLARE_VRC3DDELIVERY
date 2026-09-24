@@ -62,7 +62,7 @@ UnityでRAC1を書き出す
 
 ### 単一Mesh
 
-単一の`MeshFilter`または`SkinnedMeshRenderer`だけを書き出す場合は、Hierarchyで対象を選び、`Tools > Avatar Catalog > RAC1 Exporter`を使用します。
+単一の`MeshFilter`または`SkinnedMeshRenderer`だけを書き出す場合は、Hierarchyで対象を選び、`Tools > FLARE > Developer > Legacy Exporters > RAC1 Exporter`を使用します。
 
 ### ローカル検証
 

@@ -67,7 +67,7 @@ namespace AvatarCatalog.Remote
         private string _avatar;
         private bool _trial;
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Legacy Exporters/Configure RAC2 Product Metadata...")]
+        [MenuItem("Tools/FLARE/Developer/Legacy Exporters/Configure RAC2 Product Metadata...")]
         private static void Open()
         {
             Rac2ProductSettingsWindow window = GetWindow<Rac2ProductSettingsWindow>("RAC2 Product");

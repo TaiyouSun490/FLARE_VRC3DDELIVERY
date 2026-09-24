@@ -12,7 +12,7 @@ namespace AvatarCatalog.Remote
     /// </summary>
     public static class Rac1BoothAuthoringSelfTest
     {
-        private const string MenuPath = "Tools/Avatar Catalog/Developer/Tests/RAC1/Run Booth Authoring Self-Test";
+        private const string MenuPath = "Tools/FLARE/Developer/Tests/RAC1/Run Booth Authoring Self-Test";
 
         [MenuItem(MenuPath)]
         public static void RunFromMenu()

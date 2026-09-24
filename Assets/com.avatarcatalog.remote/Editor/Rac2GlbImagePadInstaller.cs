@@ -17,7 +17,7 @@ namespace AvatarCatalog.Remote
     /// <summary>Upgrades the existing ImagePad prefab to RAC2-only in-place.</summary>
     public static class Rac2GlbImagePadInstaller
     {
-        private const string MenuPath = "Tools/Avatar Catalog/Developer/Installers/Upgrade 3D Pad to RAC2";
+        private const string MenuPath = "Tools/FLARE/Developer/Installers/Upgrade 3D Pad to RAC2";
         private const string RequestPath = "Library/NightSlotRac2Pad.upgrade";
         private const string PrefabPath = "Assets/NightSlotMall/Prefabs/RAC-3D-ImagePad.prefab";
         private const string MaterialPath = "Assets/NightSlotMall/Materials/RAC1-Runtime-Cutout.mat";

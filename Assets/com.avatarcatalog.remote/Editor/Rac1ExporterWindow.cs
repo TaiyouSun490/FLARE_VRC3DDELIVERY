@@ -7,7 +7,7 @@ namespace AvatarCatalog.Remote
 {
     public sealed class Rac1ExporterWindow : EditorWindow
     {
-        private const string MenuPath = "Tools/Avatar Catalog/Developer/Legacy Exporters/RAC1 Exporter";
+        private const string MenuPath = "Tools/FLARE/Developer/Legacy Exporters/RAC1 Exporter";
         private const string IncludeTextureKey = "AvatarCatalog.Remote.IncludeTexture";
         private const string TextureSizeKey = "AvatarCatalog.Remote.TextureSize";
 

@@ -109,6 +109,7 @@ namespace AvatarCatalog.Remote
 
         private sealed class VatPayload
         {
+            public Bounds Bounds;
             public byte[] Info;
             public byte[] Positions;
             public byte[] Normals;
@@ -630,6 +631,7 @@ namespace AvatarCatalog.Remote
 
             return new VatPayload
             {
+                Bounds = new Bounds((minimum + maximum) * 0.5f, maximum - minimum),
                 Info = info,
                 Positions = BuildVatTexture(width, height, 1, positionRaw),
                 Normals = hasNormals ? BuildVatTexture(width, height, 2, normalRaw) : null,

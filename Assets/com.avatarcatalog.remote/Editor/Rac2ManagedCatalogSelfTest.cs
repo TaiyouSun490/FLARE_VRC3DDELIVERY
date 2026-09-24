@@ -12,7 +12,7 @@ namespace AvatarCatalog.Remote
     {
         private const string AvatarId = "avtr_00000000-0000-0000-0000-000000000000";
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Tests/Run Managed Catalog Self-Test")]
+        [MenuItem("Tools/FLARE/Developer/Tests/Run Managed Catalog Self-Test")]
         public static void RunMenu()
         {
             Run();

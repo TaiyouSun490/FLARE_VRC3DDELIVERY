@@ -59,6 +59,16 @@ namespace AvatarCatalog.Remote
         public string MainTextureProperty = "_MainTex";
         public string BaseColorProperty = "_Color";
 
+        [Header("Reconstruction appearance (PC / lilToon reconstruction templates)")]
+        public bool ReconstructionEnabled = true;
+        [Range(0f, 8f)] public float ReconstructionDuration = 2.25f;
+        [Range(0.01f, 0.4f)] public float ReconstructionBlockSize = 0.08f;
+        [Range(0f, 4f)] public float ReconstructionScatter = 1.5f;
+        [Range(0.005f, 0.3f)] public float ReconstructionEdgeWidth = 0.065f;
+        [ColorUsage(false, true)] public Color ReconstructionEdgeColor = new Color(1.5f, 3.8f, 5f, 1f);
+        [Tooltip("Visual normal displacement in exhibit meters. Zero disables it. Coarse meshes have coarse displacement.")]
+        [Range(0f, 0.05f)] public float ReconstructionInflation = 0.018f;
+
         [Header("Standard booth profile")]
         public bool EnforceStandardBoothProfile = true;
         public float BoothWidth = 3f;
@@ -142,9 +152,9 @@ namespace AvatarCatalog.Remote
         private const uint AttrTangents = 8u;
         private const uint AttrUv1 = 16u;
         private const uint KnownAttributes = 31u;
-        private const int StandardMaxBytes = 67108864;
-        private const int StandardMaxVertices = 40000;
-        private const int StandardMaxIndices = 120000;
+        private const int StandardMaxBytes = Rac2Capacity.MaxBytes;
+        private const int StandardMaxVertices = Rac2Capacity.MaxVertices;
+        private const int StandardMaxIndices = Rac2Capacity.MaxIndices;
         private const int StandardMaxTextureDimension = 1024;
         private const int StandardMaxTextureBytes = 4194304;
         private const int MinimumExpansionTokenBudgetPerFrame = 1024;
@@ -267,7 +277,7 @@ namespace AvatarCatalog.Remote
         {
             byte[] bytes = result.ResultBytes;
             if (bytes == null || bytes.Length == 0) { ReportError("RAC2 response was empty.", 0); return; }
-            if (bytes.Length > StandardMaxBytes) { ReportError("RAC2 exceeds the 64 MB VAT Pad limit.", 0); return; }
+            if (bytes.Length > StandardMaxBytes) { ReportError("RAC2 exceeds the 128 MiB PC loading limit.", 0); return; }
 
             _data = bytes;
             uint downloadedVersion = bytes.Length >= 8 ? ReadU32At(4) : 0u;
@@ -1548,7 +1558,72 @@ namespace AvatarCatalog.Remote
             LoadedDecodedBytes = _bundleRestoreDecodedBytes;
             Status = StatusReady;
             StatusMessage = "Ready";
+            BeginReconstruction(true);
             Notify(LoadSucceededEvent);
+        }
+
+        public void RestartReconstruction()
+        {
+            if (Status == StatusReady) BeginReconstruction(false);
+        }
+
+        private void BeginReconstruction(bool expandBounds)
+        {
+            int count = _bundleMaterials != null ? LoadedRenderNodeCount : 1;
+            if (count == 0) return; // Particle-only exhibits keep their existing behavior.
+            Matrix4x4 worldToRoot = transform.worldToLocalMatrix;
+            float minimum = float.MaxValue, maximum = float.MinValue;
+            for (int i = 0; i < count; i++)
+            {
+                MeshFilter filter = _bundleMaterials != null ? BundleMeshFilter(i) : TargetMeshFilter;
+                if (filter == null || filter.sharedMesh == null) continue;
+                Bounds bounds = filter.sharedMesh.bounds;
+                Matrix4x4 toRoot = worldToRoot * filter.transform.localToWorldMatrix;
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 point = toRoot.MultiplyPoint3x4(new Vector3(
+                        (corner & 1) == 0 ? bounds.min.x : bounds.max.x,
+                        (corner & 2) == 0 ? bounds.min.y : bounds.max.y,
+                        (corner & 4) == 0 ? bounds.min.z : bounds.max.z));
+                    minimum = Mathf.Min(minimum, point.y); maximum = Mathf.Max(maximum, point.y);
+                }
+            }
+            if (minimum > maximum) return;
+            float start = Time.timeSinceLevelLoad;
+            for (int i = 0; i < count; i++)
+            {
+                MeshFilter filter = _bundleMaterials != null ? BundleMeshFilter(i) : TargetMeshFilter;
+                MeshRenderer renderer = _bundleMaterials != null ? BundleMeshRenderer(i) : TargetRenderer;
+                if (filter == null || renderer == null || filter.sharedMesh == null) continue;
+                Matrix4x4 toRoot = worldToRoot * filter.transform.localToWorldMatrix;
+                Material[] materials = renderer.sharedMaterials; // Already instanced by the loader; never edit templates.
+                bool supported = false;
+                for (int m = 0; m < materials.Length; m++)
+                {
+                    Material material = materials[m];
+                    if (material == null || !material.HasProperty("_RacRevealEnabled")) continue;
+                    supported = true;
+                    material.SetFloat("_RacRevealEnabled", ReconstructionEnabled ? 1f : 0f);
+                    material.SetFloat("_RacRevealStart", start);
+                    material.SetFloat("_RacRevealDuration", Mathf.Clamp(ReconstructionDuration, 0f, 8f));
+                    material.SetFloat("_RacRevealProgressOverride", -1f);
+                    material.SetFloat("_RacRevealCellSize", Mathf.Clamp(ReconstructionBlockSize, 0.01f, 0.4f));
+                    material.SetFloat("_RacRevealScatter", Mathf.Clamp(ReconstructionScatter, 0f, 4f));
+                    material.SetFloat("_RacRevealEdgeWidth", Mathf.Clamp(ReconstructionEdgeWidth, 0.005f, 0.3f));
+                    material.SetFloat("_RacRevealInflation", Mathf.Clamp(ReconstructionInflation, 0f, 0.05f));
+                    material.SetColor("_RacRevealEdgeColor", ReconstructionEdgeColor);
+                    material.SetVector("_RacRevealHeight", new Vector4(minimum, maximum, 0f, 0f));
+                    material.SetMatrix("_RacRevealObjectToRoot", toRoot);
+                }
+                if (expandBounds && supported && ReconstructionEnabled)
+                {
+                    float smallestScale = Mathf.Min(toRoot.MultiplyVector(Vector3.right).magnitude,
+                        Mathf.Min(toRoot.MultiplyVector(Vector3.up).magnitude, toRoot.MultiplyVector(Vector3.forward).magnitude));
+                    Bounds bounds = filter.sharedMesh.bounds;
+                    bounds.Expand(2f * Mathf.Clamp(ReconstructionInflation, 0f, 0.05f) / Mathf.Max(0.001f, smallestScale));
+                    filter.sharedMesh.bounds = bounds;
+                }
+            }
         }
 
         private void ClearExpansionState()
@@ -2259,11 +2334,10 @@ namespace AvatarCatalog.Remote
                 return BundleFail("RAC2 v3 product has no bounded content.");
             Vector3 declaredMin = declaredCenter - declaredSize * 0.5f;
             Vector3 declaredMax = declaredCenter + declaredSize * 0.5f;
-            bool bundleBoundsMatch = emitterCount > 0
-                ? BoundsContain(_bundleActualMin, _bundleActualMax, declaredMin, declaredMax)
-                : BoundsConsistent(_bundleActualMin, _bundleActualMax, declaredMin, declaredMax);
-            if (!bundleBoundsMatch)
+            if (!BoundsContain(_bundleActualMin, _bundleActualMax, declaredMin, declaredMax))
                 return BundleFail("RAC2 v3 META bounds do not contain the model or VAT geometry.");
+            if (emitterCount == 0 && !BoundsConsistent(_bundleActualMin, _bundleActualMax, declaredMin, declaredMax))
+                return BundleFail("RAC2 v3 META has excessive empty margins around the geometry. Re-export with the current Creator.");
             Vector3 bundleSize = _bundleActualMax - _bundleActualMin;
             Vector3 normalizedBundleMin = new Vector3(
                 -bundleSize.x * 0.5f, 0f, -bundleSize.z * 0.5f);
@@ -2653,7 +2727,7 @@ namespace AvatarCatalog.Remote
                 if (total != indexCount) return Fail("RAC2 v3 submesh totals are inconsistent.");
                 _decodeMesh = new Mesh();
                 _decodeMesh.name = "RAC2 v3 " + label;
-                _decodeMesh.indexFormat = IndexFormat.UInt16;
+                _decodeMesh.indexFormat = vertexCount > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
                 _decodeMesh.subMeshCount = submeshCount;
                 _decodePhase++;
             }

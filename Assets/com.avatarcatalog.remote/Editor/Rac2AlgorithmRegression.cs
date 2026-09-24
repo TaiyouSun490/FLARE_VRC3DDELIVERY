@@ -64,7 +64,7 @@ namespace AvatarCatalog.Remote
             }
         }
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Tests/Run Algorithm Regression")]
+        [MenuItem("Tools/FLARE/Developer/Tests/Run Algorithm Regression")]
         public static void Run()
         {
             _checks = 0;

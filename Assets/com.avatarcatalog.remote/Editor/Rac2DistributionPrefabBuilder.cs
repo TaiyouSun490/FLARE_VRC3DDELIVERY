@@ -9,7 +9,7 @@ namespace AvatarCatalog.Remote
     /// <summary>Builds the clean RAC2 v0.1 sample prefab without modifying a scene.</summary>
     public static class Rac2DistributionPrefabBuilder
     {
-        private const string MenuPath = "Tools/Avatar Catalog/Developer/Build/Build Legacy RAC2 v0.1 Sample Prefab";
+        private const string MenuPath = "Tools/FLARE/Developer/Build/Build Legacy RAC2 v0.1 Sample Prefab";
         private const string RequestPath = "Library/BuildRac2DistributionPrefab.request";
         private const string SourcePrefabPath = "Assets/NightSlotMall/Prefabs/RAC-3D-ImagePad.prefab";
         private const string OutputFolder = "Assets/RemoteAvatarCatalogDistribution";

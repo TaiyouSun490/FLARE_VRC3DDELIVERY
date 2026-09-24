@@ -15,7 +15,7 @@ namespace AvatarCatalog.Remote
         private const string BuildFolder = "Builds/RAC2-Managed-Avatar-Catalog-0.2.0";
         private const string UnityPackage = BuildFolder + "/RAC2-Managed-Avatar-Catalog-0.2.0.unitypackage";
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Build/Build Managed Avatar Catalog Discovery Release")]
+        [MenuItem("Tools/FLARE/Developer/Build/Build Managed Avatar Catalog Discovery Release")]
         public static void BuildRelease()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)

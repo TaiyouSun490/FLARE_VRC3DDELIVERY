@@ -30,7 +30,7 @@ namespace AvatarCatalog.Remote
             };
         }
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Installers/Finalize Legacy GLB + RAC2 Pad")]
+        [MenuItem("Tools/FLARE/Developer/Installers/Finalize Legacy GLB + RAC2 Pad")]
         public static void Install()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Exit Play Mode before updating the 3D Pad.");

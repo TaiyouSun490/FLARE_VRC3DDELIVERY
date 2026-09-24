@@ -15,7 +15,7 @@ namespace AvatarCatalog.Remote
         private bool _hasCollider = true;
         private bool _portable;
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Legacy Exporters/Export ParticleSystem to RAC2...")]
+        [MenuItem("Tools/FLARE/Developer/Legacy Exporters/Export ParticleSystem to RAC2...")]
         private static void Open()
         {
             Rac2ParticleExporterWindow window = GetWindow<Rac2ParticleExporterWindow>("RAC2 Particle Export");

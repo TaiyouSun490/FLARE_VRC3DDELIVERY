@@ -17,7 +17,7 @@ namespace AvatarCatalog.Remote
     /// <summary>Adds the self-owned direct GLB path beside the existing full RAC2 path.</summary>
     public static class Rac3dImagePadV2Installer
     {
-        private const string MenuPath = "Tools/Avatar Catalog/Developer/Installers/Install Legacy GLB + RAC2 Pad";
+        private const string MenuPath = "Tools/FLARE/Developer/Installers/Install Legacy GLB + RAC2 Pad";
         private const string RequestPath = "Library/NightSlotRacGlbPadV2.install";
         private const string PrefabPath = "Assets/NightSlotMall/Prefabs/RAC-3D-ImagePad.prefab";
         private const string MaterialPath = "Assets/NightSlotMall/Materials/RAC1-Runtime-Cutout.mat";

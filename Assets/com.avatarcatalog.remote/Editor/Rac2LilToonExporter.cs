@@ -8,7 +8,7 @@ namespace AvatarCatalog.Remote
     /// <summary>Exports one selected static or currently posed lilToon renderer to RAC2 v0.1.</summary>
     public static class Rac2LilToonExporter
     {
-        private const string MenuPath = "Tools/Avatar Catalog/Developer/Legacy Exporters/Export Selected lilToon Mesh to RAC2...";
+        private const string MenuPath = "Tools/FLARE/Developer/Legacy Exporters/Export Selected lilToon Mesh to RAC2...";
 
         [MenuItem(MenuPath)]
         public static void ExportSelected()

@@ -10,6 +10,8 @@ namespace AvatarCatalog.Remote
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public sealed class Rac2ProductController : UdonSharpBehaviour
     {
+        [Header("Language / 言語")]
+        public bool UseJapanese = true;
         [Header("Product display")]
         public GameObject ProductDisplayRoot;
         public Text ProductNameText;
@@ -62,32 +64,37 @@ namespace AvatarCatalog.Remote
         public void RefreshProduct()
         {
             if (ProductDisplayRoot != null) ProductDisplayRoot.SetActive(HasProduct);
-            if (ProductNameText != null) ProductNameText.text = string.IsNullOrEmpty(ProductName) ? "Untitled product" : ProductName;
-            if (CreatorText != null) CreatorText.text = string.IsNullOrEmpty(CreatorName) ? "" : "by " + CreatorName;
+            if (ProductNameText != null) ProductNameText.text = string.IsNullOrEmpty(ProductName) ? (UseJapanese ? "名称未設定" : "Untitled product") : ProductName;
+            if (CreatorText != null) CreatorText.text = string.IsNullOrEmpty(CreatorName) ? "" : (UseJapanese ? "作者: " : "by ") + CreatorName;
             if (ProductUrlText != null) ProductUrlText.text = ProductUrl;
             bool canTry = HasProduct && TrialEnabled && IsValidAvatarId(AvatarBlueprintId) && TargetPedestal != null;
             if (PedestalVisualRoot != null) PedestalVisualRoot.SetActive(canTry);
             if (TrialButtonRoot != null) TrialButtonRoot.SetActive(canTry);
-            if (StatusText != null) StatusText.text = canTry ? "Avatar trial available" : HasProduct ? "Product loaded" : "No product metadata";
+            if (StatusText != null) StatusText.text = canTry ? (UseJapanese ? "アバターを試着できます" : "Avatar trial available") : HasProduct ? (UseJapanese ? "商品情報を読み込みました" : "Product loaded") : (UseJapanese ? "商品情報がありません" : "No product metadata");
+            if (TrialButtonRoot != null)
+            {
+                Text label = TrialButtonRoot.GetComponentInChildren<Text>(true);
+                if (label != null) label.text = UseJapanese ? "アバターを試着" : "TRY AVATAR";
+            }
         }
 
         public void TryAvatar()
         {
             if (!HasProduct || !TrialEnabled || !IsValidAvatarId(AvatarBlueprintId) || TargetPedestal == null)
             {
-                SetStatus("Avatar trial is not available.");
+                SetStatus(UseJapanese ? "アバターの試着は利用できません。" : "Avatar trial is not available.");
                 return;
             }
             VRCPlayerApi localPlayer = Networking.LocalPlayer;
             if (!Utilities.IsValid(localPlayer))
             {
-                SetStatus("The local VRChat player is not ready.");
+                SetStatus(UseJapanese ? "ローカルプレイヤーの準備が完了していません。" : "The local VRChat player is not ready.");
                 return;
             }
             TargetPedestal.SwitchAvatar(AvatarBlueprintId);
             TargetPedestal.SetAvatarUse(localPlayer);
             TrialRequestCount++;
-            SetStatus("Avatar trial requested.");
+            SetStatus(UseJapanese ? "アバターの試着を要求しました。" : "Avatar trial requested.");
         }
 
         private bool IsValidAvatarId(string value)

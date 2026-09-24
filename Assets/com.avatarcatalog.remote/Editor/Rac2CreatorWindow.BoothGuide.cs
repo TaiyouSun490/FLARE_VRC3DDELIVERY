@@ -32,6 +32,7 @@ namespace AvatarCatalog.Remote
 
         private void OnEnable()
         {
+            RefreshSummary();
             SceneView.duringSceneGui -= DrawBoothSceneGuide;
             SceneView.duringSceneGui += DrawBoothSceneGuide;
             RefreshBoothGuide(false);
@@ -39,11 +40,13 @@ namespace AvatarCatalog.Remote
 
         private void OnDisable()
         {
+            CancelBake();
             SceneView.duringSceneGui -= DrawBoothSceneGuide;
         }
 
         private void OnInspectorUpdate()
         {
+            if (_bakeRunner != null) return;
             double now = EditorApplication.timeSinceStartup;
             if (now < _nextBoothPreviewRefresh ||
                 now < _keepExactPreviewUntil)
@@ -57,6 +60,7 @@ namespace AvatarCatalog.Remote
 
         private void OnHierarchyChange()
         {
+            if (_bakeRunner != null) return;
             _keepExactPreviewUntil = 0d;
             RefreshBoothGuide(true);
             Repaint();
@@ -66,11 +70,11 @@ namespace AvatarCatalog.Remote
         {
             EditorGUILayout.Space(8f);
             EditorGUILayout.LabelField(
-                "保存後の配置プレビュー", EditorStyles.boldLabel);
+                L("Placement preview after export"), EditorStyles.boldLabel);
 
             EditorGUI.BeginChangeCheck();
             _showBoothGuide = EditorGUILayout.ToggleLeft(
-                "Sceneビューに3m × 3m × 高さ2.7mの配置枠を表示",
+                L("Show the 3m x 3m x 2.7m placement guide in the Scene view"),
                 _showBoothGuide);
             if (EditorGUI.EndChangeCheck())
                 SceneView.RepaintAll();
@@ -88,11 +92,11 @@ namespace AvatarCatalog.Remote
             using (new EditorGUILayout.HorizontalScope())
             using (new EditorGUI.DisabledScope(_root == null))
             {
-                if (GUILayout.Button("保存後のブースを見る"))
+                if (GUILayout.Button(L("Frame exported booth")))
                     FocusBoothInScene();
                 using (new EditorGUI.DisabledScope(!HasBoothOffender()))
                 {
-                    if (GUILayout.Button("大きすぎる要素を選択"))
+                    if (GUILayout.Button(L("Select oversized object")))
                         SelectFirstBoothOffender();
                 }
             }
@@ -262,7 +266,7 @@ namespace AvatarCatalog.Remote
             {
                 Source = source,
                 Label = string.IsNullOrEmpty(label)
-                    ? "(unnamed)"
+                    ? L("(unnamed)")
                     : label,
                 IsParticle = isParticle,
                 LocalBounds = localBounds,
@@ -299,13 +303,13 @@ namespace AvatarCatalog.Remote
                 source.GetComponent<ParticleSystemRenderer>();
             if (renderer == null)
                 throw new InvalidOperationException(
-                    "Particle renderer is missing.");
+                    L("Particle renderer is missing."));
 
             bool billboard =
                 renderer.renderMode != ParticleSystemRenderMode.Mesh;
             if (!billboard && renderer.mesh == null)
                 throw new InvalidOperationException(
-                    "Particle mesh is missing.");
+                    L("Particle mesh is missing."));
             if (renderer.renderMode != ParticleSystemRenderMode.Mesh &&
                 renderer.renderMode !=
                     ParticleSystemRenderMode.Billboard &&
@@ -314,7 +318,7 @@ namespace AvatarCatalog.Remote
                 renderer.renderMode !=
                     ParticleSystemRenderMode.VerticalBillboard)
                 throw new NotSupportedException(
-                    "BillboardまたはMesh表示にしてください。");
+                    L("Use Billboard or Mesh rendering."));
 
             ParticleSystem.MainModule main = source.main;
             float lifeMin;
@@ -327,30 +331,30 @@ namespace AvatarCatalog.Remote
             float gravityMax;
             ReadParticleCurve(
                 main.startLifetime,
-                "start lifetime",
+                L("start lifetime"),
                 out lifeMin,
                 out lifeMax);
             ReadParticleCurve(
                 main.startSpeed,
-                "start speed",
+                L("start speed"),
                 out speedMin,
                 out speedMax);
             ReadParticleCurve(
                 main.startSize,
-                "start size",
+                L("start size"),
                 out sizeMin,
                 out sizeMax);
             ReadParticleCurve(
                 main.gravityModifier,
-                "gravity",
+                L("gravity"),
                 out gravityMin,
                 out gravityMax);
             if (Mathf.Abs(lifeMax - lifeMin) > 0.0001f)
                 throw new NotSupportedException(
-                    "LifetimeはConstantにしてください。");
+                    L("Lifetime must be Constant."));
             if (Mathf.Abs(gravityMax - gravityMin) > 0.0001f)
                 throw new NotSupportedException(
-                    "GravityはConstantにしてください。");
+                    L("Gravity must be Constant."));
 
             int shapeType;
             float shapeRadius;
@@ -483,16 +487,16 @@ namespace AvatarCatalog.Remote
 
         private string BuildBoothGuideMessage()
         {
-            const string legend =
-                "緑の箱＝保存後のブース / 青い面＝保存後の床 / 黄・赤の箱＝モデル／VATの全体サイズ";
+            string legend =
+                L("Green = exported booth / Blue = floor / Yellow or red = model and VAT bounds");
 
             if (_root == null)
-                return legend + "\nまずExhibit Rootを選択してください。";
+                return legend + L("\nSelect the Exhibit Root first.");
 
             if (!_hasBoothPreviewBounds)
             {
                 string emptyMessage =
-                    "\n表示できるモデルまたはパーティクルがありません。";
+                    L("\nNo visible models or particles found.");
                 if (!string.IsNullOrEmpty(_boothPreviewError))
                     emptyMessage += "\n" + _boothPreviewError;
                 return legend + emptyMessage;
@@ -501,23 +505,23 @@ namespace AvatarCatalog.Remote
             bool fits = BoothBoundsFit(_boothPreviewBounds);
             Vector3 size = _boothPreviewBounds.size;
             string source = _boothPreviewIsExact
-                ? "モデル／VATの書き出し範囲"
-                : "現在のモデル範囲";
+                ? L("Exported model / VAT bounds")
+                : L("Current model bounds");
             string result = legend + "\n" +
                 (fits
-                    ? "OK：そのまま書き出せます。保存時に自動で床置き・中央寄せします。"
-                    : "NG：展示物のサイズを小さくしてください。 " +
+                    ? L("OK: ready to export. Automatically centered on the floor when saved.")
+                    : L("Too large: reduce the exhibit size. ") +
                       DescribeBoothOverflow(_boothPreviewBounds)) +
-                "\n" + source + "：横幅 " + size.x.ToString("0.00") +
-                "m / 高さ " + size.y.ToString("0.00") +
-                "m / 奥行 " + size.z.ToString("0.00") + "m" +
-                "\nRootの位置・Pivotは無関係です。ParticleSystemは床・中央・寸法判定から完全に除外し、ブース外の粒子だけ再生時に自動で隠します。";
+                "\n" + source + L(": width ") + size.x.ToString("0.00") +
+                L("m / height ") + size.y.ToString("0.00") +
+                L("m / depth ") + size.z.ToString("0.00") + "m" +
+                L("\nRoot and pivot position do not matter. Particles do not affect floor, centering or dimensions. Out-of-booth particles are hidden during playback.");
 
             string offenders = BuildBoothOffenderText();
             if (!string.IsNullOrEmpty(offenders))
-                result += "\n大きすぎる要素:\n" + offenders;
+                result += L("\nOversized objects:\n") + offenders;
             if (!string.IsNullOrEmpty(_boothPreviewError))
-                result += "\nプレビュー警告:\n" + _boothPreviewError;
+                result += L("\nPreview warning:\n") + _boothPreviewError;
             return result;
         }
 
@@ -536,9 +540,9 @@ namespace AvatarCatalog.Remote
                 if (shown > 0) result += "\n";
                 result += "・" +
                     (item.IsParticle
-                        ? "Particle "
-                        : "Model ") +
-                    item.Label + "： " +
+                        ? L("Particle ")
+                        : L("Model ")) +
+                    item.Label + L(": ") +
                     DescribeBoothOverflow(item.LocalBounds);
                 shown++;
                 if (shown >= 4) break;
@@ -566,25 +570,25 @@ namespace AvatarCatalog.Remote
 
             if (size.x > width + BoothTolerance * 2f)
                 dimensions.Add(
-                    "横幅 " + size.x.ToString("0.00") +
-                    "m / 上限 " + width.ToString("0.00") +
-                    "m（" + (size.x - width).ToString("0.00") +
-                    "m縮小が必要）");
+                    L("Width ") + size.x.ToString("0.00") +
+                    L("m / limit ") + width.ToString("0.00") +
+                    L("m (") + (size.x - width).ToString("0.00") +
+                    L("m reduction needed)"));
             if (size.y > BoothHeight + BoothTolerance)
                 dimensions.Add(
-                    "高さ " + size.y.ToString("0.00") +
-                    "m / 上限 " + BoothHeight.ToString("0.00") +
-                    "m（" + (size.y - BoothHeight).ToString("0.00") +
-                    "m縮小が必要）");
+                    L("Height ") + size.y.ToString("0.00") +
+                    L("m / limit ") + BoothHeight.ToString("0.00") +
+                    L("m (") + (size.y - BoothHeight).ToString("0.00") +
+                    L("m reduction needed)"));
             if (size.z > depth + BoothTolerance * 2f)
                 dimensions.Add(
-                    "奥行 " + size.z.ToString("0.00") +
-                    "m / 上限 " + depth.ToString("0.00") +
-                    "m（" + (size.z - depth).ToString("0.00") +
-                    "m縮小が必要）");
+                    L("Depth ") + size.z.ToString("0.00") +
+                    L("m / limit ") + depth.ToString("0.00") +
+                    L("m (") + (size.z - depth).ToString("0.00") +
+                    L("m reduction needed)"));
 
             return dimensions.Count == 0
-                ? "サイズはブース内です。"
+                ? L("Fits inside the booth.")
                 : string.Join(" / ", dimensions.ToArray());
         }
 
@@ -799,7 +803,7 @@ namespace AvatarCatalog.Remote
                         -BoothHalfWidth,
                         0.03f,
                         -BoothHalfDepth)),
-                "床 Y=0",
+                L("Floor Y=0"),
                 style);
             Handles.Label(
                 rootTransform.TransformPoint(
@@ -807,7 +811,7 @@ namespace AvatarCatalog.Remote
                         -BoothHalfWidth,
                         BoothHeight,
                         -BoothHalfDepth)),
-                "天井 Y=2.7m",
+                L("Ceiling Y=2.7m"),
                 style);
             Handles.Label(
                 rootTransform.TransformPoint(
@@ -815,7 +819,7 @@ namespace AvatarCatalog.Remote
                         0f,
                         0.03f,
                         BoothHalfDepth + 0.16f)),
-                "客側 +Z",
+                L("Front +Z"),
                 style);
         }
 
@@ -826,10 +830,10 @@ namespace AvatarCatalog.Remote
                 new Rect(12f, 12f, 510f, 190f),
                 GUI.skin.box);
             GUILayout.Label(
-                "RAC2 保存後の配置  3m × 3m × 高さ2.7m",
+                L("RAC2 exported placement: 3m x 3m x 2.7m"),
                 EditorStyles.boldLabel);
             GUILayout.Label(
-                "Root/Pivotは無関係。保存時に床置き・中央寄せします。",
+                L("Independent of root/pivot. Centered on the floor at export."),
                 EditorStyles.wordWrappedMiniLabel);
 
             if (_hasBoothPreviewBounds)
@@ -843,32 +847,32 @@ namespace AvatarCatalog.Remote
                     : new Color(1f, 0.25f, 0.25f);
                 GUILayout.Label(
                     (fits
-                        ? "OK：このまま書き出せます"
-                        : "NG：" + DescribeBoothOverflow(
+                        ? L("OK: ready to export")
+                        : L("Too large: ") + DescribeBoothOverflow(
                             _boothPreviewBounds)) +
-                    "\n横幅 " + size.x.ToString("0.00") +
-                    "m / 高さ " + size.y.ToString("0.00") +
-                    "m / 奥行 " + size.z.ToString("0.00") + "m",
+                    L("\nWidth ") + size.x.ToString("0.00") +
+                    L("m / height ") + size.y.ToString("0.00") +
+                    L("m / depth ") + size.z.ToString("0.00") + "m",
                     resultStyle);
                 GUILayout.Label(
-                    "ParticleSystemは配置・寸法判定外。ブース外の粒子は再生時に自動で隠れます。",
+                    L("Particles do not affect placement or dimensions. Out-of-booth particles are hidden during playback."),
                     EditorStyles.wordWrappedMiniLabel);
             }
             else
             {
                 GUILayout.Label(
-                    "Exhibit Rootの子にモデル／Particleを置いてください。",
+                    L("Place models and particles under the Exhibit Root."),
                     EditorStyles.wordWrappedLabel);
             }
 
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("保存後のブースを見る"))
+                if (GUILayout.Button(L("Frame exported booth")))
                     FocusBoothInScene();
                 using (new EditorGUI.DisabledScope(
                     !HasBoothOffender()))
                 {
-                    if (GUILayout.Button("大きすぎる要素を選択"))
+                    if (GUILayout.Button(L("Select oversized object")))
                         SelectFirstBoothOffender();
                 }
             }

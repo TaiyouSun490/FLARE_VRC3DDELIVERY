@@ -1,8 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Animations;
 using UnityEngine.Rendering;
+using UnityEngine.SceneManagement;
 
 namespace AvatarCatalog.Remote
 {
@@ -11,11 +15,16 @@ namespace AvatarCatalog.Remote
     {
         private enum BlendProfile { Alpha, Additive }
 
-        private GameObject _root;
-        private AnimationClip _clip;
-        private int _framesPerSecond = 30;
-        private bool _loop = true;
-        private bool _includeVatNormals = true;
+        [SerializeField] private GameObject _root;
+        [SerializeField] private AnimationClip _clip;
+        [SerializeField] private int _framesPerSecond = 30;
+        [SerializeField] private bool _loop = true;
+        [SerializeField] private bool _includeVatNormals = true;
+        [SerializeField] private bool _includePhysBones;
+        [SerializeField] private float _physBoneWarmup = 1f;
+        [SerializeField] private float _physBoneSeam = .15f;
+        private bool _showConstraintSettings;
+        private int _constraintMaxPasses = 32;
         private BlendProfile _particleBlend = BlendProfile.Alpha;
         private bool _hasCollider = true;
         private bool _portable;
@@ -28,17 +37,18 @@ namespace AvatarCatalog.Remote
         private bool _compress;
         private bool _shareTextures = true;
         private Vector2 _scroll;
-        private string _scanSummary = "Select the root GameObject of the exhibit.";
+        private string _scanSummary = "";
+        private Rac2EditorBakeRunner _bakeRunner;
 
-        [MenuItem("Tools/Avatar Catalog/RAC2 Creator...", priority = 1)]
+        [MenuItem("Tools/FLARE/RAC2 Creator...", priority = 1)]
         private static void Open()
         {
-            Rac2CreatorWindow window = GetWindow<Rac2CreatorWindow>("RAC2 Creator");
+            Rac2CreatorWindow window = GetWindow<Rac2CreatorWindow>("FLARE RAC2 Creator");
             window.minSize = new Vector2(520f, 540f);
             window.UseSelection();
         }
 
-        [MenuItem("GameObject/Avatar Catalog/Create RAC2 from this object...", false, 20)]
+        [MenuItem("GameObject/FLARE/Create RAC2 from this object...", false, 20)]
         private static void OpenFromGameObject()
         {
             Open();
@@ -51,92 +61,129 @@ namespace AvatarCatalog.Remote
 
         private void OnGUI()
         {
+            float previousLabelWidth = EditorGUIUtility.labelWidth;
+            try
+            {
+                EditorGUIUtility.labelWidth = Mathf.Clamp(position.width * .5f, 240f, 320f);
+                DrawCreatorGui();
+            }
+            finally { EditorGUIUtility.labelWidth = previousLabelWidth; }
+        }
+
+        private void DrawCreatorGui()
+        {
+            if (FlareLocalization.DrawLanguage() && _bakeRunner == null) RefreshSummary();
+            if (GUILayout.Button(L("User guide"))) FlareLocalization.OpenGuide();
+            if (_bakeRunner != null)
+            {
+                EditorGUILayout.HelpBox(L("Exporting VAT with clothing constraints. The original object is not modified."), MessageType.Info);
+                if (GUILayout.Button(L("Cancel export"))) CancelBake();
+                return;
+            }
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
-            EditorGUILayout.LabelField("RAC2 Creator", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("FLARE RAC2 Creator", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "Choose one root. All supported child renderers and Particle Systems are packed into one RAC2. " +
-                "If an Animation Clip is supplied, every child SkinnedMeshRenderer is baked to VAT automatically.",
+                L("Choose one root. All supported child renderers and Particle Systems are packed into one RAC2. ") +
+                L("If an Animation Clip is supplied, every child SkinnedMeshRenderer is baked to VAT automatically."),
                 MessageType.Info);
 
             EditorGUI.BeginChangeCheck();
-            _root = (GameObject)EditorGUILayout.ObjectField("Exhibit Root", _root, typeof(GameObject), true);
+            _root = (GameObject)EditorGUILayout.ObjectField(L("Exhibit Root"), _root, typeof(GameObject), true);
             if (EditorGUI.EndChangeCheck()) RefreshSummary();
 
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("Use Selection")) UseSelection();
-                if (GUILayout.Button("Refresh Scan")) RefreshSummary();
+                if (GUILayout.Button(L("Use Selection"))) UseSelection();
+                if (GUILayout.Button(L("Refresh Scan"))) RefreshSummary();
             }
             EditorGUILayout.Space(4f);
             EditorGUILayout.HelpBox(_scanSummary, _root == null ? MessageType.Warning : MessageType.None);
+            DrawPerformanceRating();
             EditorGUILayout.HelpBox(
-                "推奨: 書き出し前に Mesh Baker 等で、可能な範囲のメッシュ結合、マテリアル統合、" +
-                "不要頂点・不要サブメッシュの削減を行ってください。RAC2 は複数メッシュを順次復元しますが、" +
-                "単一の巨大メッシュを復元する瞬間の負荷までは完全に分割できません。",
+                L("Recommended: before exporting, use Mesh Baker or similar tools to combine meshes and materials where practical. ") +
+                L("Remove unused vertices and submeshes. RAC2 restores meshes sequentially, ") +
+                L("but the cost of applying a single large mesh cannot be fully split across frames."),
                 MessageType.Info);
 
             DrawBoothGuideControls();
 
             EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField("Animation (optional)", EditorStyles.boldLabel);
-            _clip = (AnimationClip)EditorGUILayout.ObjectField("Animation Clip", _clip, typeof(AnimationClip), false);
+            EditorGUILayout.LabelField(L("Animation (optional)"), EditorStyles.boldLabel);
+            if (Rac2AvatarPreprocessor.HasModularAvatar(_root))
+                EditorGUILayout.HelpBox(L("Clothing: automatic MA/NDMF processing. Armatures are merged on an export copy before VAT baking. The original avatar is not modified."), MessageType.Info);
+            _clip = (AnimationClip)EditorGUILayout.ObjectField(L("Animation Clip"), _clip, typeof(AnimationClip), false);
             using (new EditorGUI.DisabledScope(_clip == null))
             {
-                _framesPerSecond = EditorGUILayout.IntSlider("VAT FPS", _framesPerSecond, 1, 60);
-                _loop = EditorGUILayout.Toggle("Loop", _loop);
-                _includeVatNormals = EditorGUILayout.Toggle("Bake VAT Normals", _includeVatNormals);
+                _framesPerSecond = EditorGUILayout.IntSlider(L("VAT FPS"), _framesPerSecond, 1, 60);
+                _loop = EditorGUILayout.Toggle(L("Loop"), _loop);
+                _includeVatNormals = EditorGUILayout.Toggle(L("Bake VAT Normals"), _includeVatNormals);
+                _includePhysBones = EditorGUILayout.Toggle(L("Include PhysBones"), _includePhysBones);
+                if (_includePhysBones)
+                {
+                    _physBoneWarmup = EditorGUILayout.Slider(L("Warm-up (seconds)"), _physBoneWarmup, 0, 10);
+                    using (new EditorGUI.DisabledScope(!_loop))
+                        _physBoneSeam = EditorGUILayout.Slider(L("Loop physics blend (seconds)"), _physBoneSeam, 0, .5f);
+                    EditorGUILayout.HelpBox("SDK " + Rac2PhysBoneBakeSession.SupportedSdk + L(" supported. PhysBone motion and colliders inside the root are recorded in VAT.")
+                        + L("Export takes longer. Live grabbing and touch interaction after loading are not included.")
+                        + L("The end blend only closes the physics offset. It does not fix pose or root-motion discontinuities in the clip."), MessageType.Info);
+                    if (Rac2PhysBoneBakeSession.Count(_root) == 0)
+                        EditorGUILayout.HelpBox(L("No active PhysBones found; standard VAT will be created."), MessageType.Warning);
+                }
+                _showConstraintSettings = EditorGUILayout.Foldout(_showConstraintSettings, L("Clothing constraint settings"));
+                if (_showConstraintSettings)
+                    _constraintMaxPasses = EditorGUILayout.IntSlider(new GUIContent(L("Maximum evaluation passes"), L("Maximum native constraint evaluations while waiting for a stable pose per frame.")), _constraintMaxPasses, 2, 120);
             }
             if (_clip == null)
-                EditorGUILayout.HelpBox("No Clip: Skinned meshes are exported in their current pose.", MessageType.None);
+                EditorGUILayout.HelpBox(L("Saved as a static pose: no VAT or PhysBone motion. Select an Animation Clip to record walking or secondary motion."), MessageType.Warning);
 
             EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField("Particles", EditorStyles.boldLabel);
-            _particleBlend = (BlendProfile)EditorGUILayout.EnumPopup("Blend Profile", _particleBlend);
+            EditorGUILayout.LabelField(L("Particles"), EditorStyles.boldLabel);
+            _particleBlend = (BlendProfile)EditorGUILayout.Popup(L("Blend Profile"), (int)_particleBlend, new[] { L("Alpha"), L("Additive") });
             EditorGUILayout.HelpBox(
-                "Up to 4 child emitters. Point/Sphere/Cone/Box, Alpha/Additive, Billboard/Mesh, " +
-                "gravity, color fade, rotation, and flipbook are supported.",
+                L("Up to 4 child emitters. Point/Sphere/Cone/Box, Alpha/Additive, Billboard/Mesh, ") +
+                L("gravity, color fade, rotation, and flipbook are supported."),
                 MessageType.None);
 
             EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField("Catalog information (optional)", EditorStyles.boldLabel);
-            _includeProduct = EditorGUILayout.Toggle("Include Catalog Info", _includeProduct);
+            EditorGUILayout.LabelField(L("Catalog information (optional)"), EditorStyles.boldLabel);
+            _includeProduct = EditorGUILayout.Toggle(L("Include Catalog Info"), _includeProduct);
             using (new EditorGUI.DisabledScope(!_includeProduct))
             {
-                _productName = EditorGUILayout.TextField("Product Name", _productName);
-                _creatorName = EditorGUILayout.TextField("Creator Name", _creatorName);
-                _productUrl = EditorGUILayout.TextField("Product HTTPS URL", _productUrl);
-                _avatarBlueprintId = EditorGUILayout.TextField("Avatar Blueprint ID", _avatarBlueprintId);
-                _trialEnabled = EditorGUILayout.Toggle("Trial Enabled", _trialEnabled);
+                _productName = EditorGUILayout.TextField(L("Product Name"), _productName);
+                _creatorName = EditorGUILayout.TextField(L("Creator Name"), _creatorName);
+                _productUrl = EditorGUILayout.TextField(L("Product HTTPS URL"), _productUrl);
+                _avatarBlueprintId = EditorGUILayout.TextField(L("Avatar Blueprint ID"), _avatarBlueprintId);
+                _trialEnabled = EditorGUILayout.Toggle(L("Trial Enabled"), _trialEnabled);
             }
 
             EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField("Interaction", EditorStyles.boldLabel);
-            _hasCollider = EditorGUILayout.Toggle("Add Box Collider", _hasCollider);
-            _portable = EditorGUILayout.Toggle("Portable / VRC Pickup", _portable);
+            EditorGUILayout.LabelField(L("Interaction"), EditorStyles.boldLabel);
+            _hasCollider = EditorGUILayout.Toggle(L("Add Box Collider"), _hasCollider);
+            _portable = EditorGUILayout.Toggle(L("Portable / VRC Pickup"), _portable);
             if (_portable) _hasCollider = true;
             EditorGUILayout.HelpBox(
-                "Portable is stored in the RAC2 metadata. Every load resets the exhibit to the ImagePad's initial position.",
+                L("Portable is stored in the RAC2 metadata. Every load resets the exhibit to the ImagePad's initial position."),
                 MessageType.None);
 
             EditorGUILayout.Space(8f);
             _compress = EditorGUILayout.Toggle(
-                "Smaller file (slower load)", _compress);
+                L("Smaller file (slower load)"), _compress);
             EditorGUILayout.HelpBox(
                 _compress
-                    ? "LZ4 reduces CDN traffic, but large VAT files take much longer to open in VRChat."
-                    : "Fast loading (recommended). The RAC2 file is larger on the CDN.",
+                    ? L("LZ4 reduces CDN traffic, but large VAT files take much longer to open in VRChat.")
+                    : L("Fast loading (recommended). The RAC2 file is larger on the CDN."),
                 MessageType.None);
             int frameCount = CalculateFrameCount();
-            _shareTextures = EditorGUILayout.Toggle("Share identical textures", _shareTextures);
+            _shareTextures = EditorGUILayout.Toggle(L("Share identical textures"), _shareTextures);
             if (_shareTextures)
-                EditorGUILayout.HelpBox("Requires RAC2 runtime 0.2.4 or later. Turn off for older worlds.", MessageType.Info);
+                EditorGUILayout.HelpBox(L("Requires RAC2 runtime 0.2.4 or later. Turn off for older worlds."), MessageType.Info);
             if (_clip != null)
-                EditorGUILayout.LabelField("VAT Frames", frameCount.ToString());
+                EditorGUILayout.LabelField(L("VAT Frames"), frameCount.ToString());
 
             EditorGUILayout.Space(10f);
             using (new EditorGUI.DisabledScope(_root == null || _clip != null && (frameCount < 2 || frameCount > 240)))
             {
-                if (GUILayout.Button("Create RAC2...", GUILayout.Height(44f)))
+                if (GUILayout.Button(L("Create RAC2..."), GUILayout.Height(44f)))
                     CreateRac2(frameCount);
             }
             EditorGUILayout.EndScrollView();
@@ -184,7 +231,7 @@ namespace AvatarCatalog.Remote
         {
             if (_root == null)
             {
-                _scanSummary = "Select the root GameObject of the exhibit.";
+                _scanSummary = L("Select the root GameObject of the exhibit.");
                 ClearBoothGuide();
                 return;
             }
@@ -204,21 +251,85 @@ namespace AvatarCatalog.Remote
             for (int index = 0; index < skinned.Length; index++)
                 if (skinned[index].sharedMesh != null) materials += skinned[index].sharedMesh.subMeshCount;
             _scanSummary =
-                validStatic + " static renderer(s) + " + skinned.Length + " skinned renderer(s) + " +
-                particles.Length + " particle emitter(s)\n" +
-                materials + " material slot(s). Limits: 16 renderers, 64 materials, 4 emitters.";
+                validStatic + L(" static renderer(s) + ") + skinned.Length + L(" skinned renderer(s) + ") +
+                particles.Length + L(" particle emitter(s)\n") +
+                materials + L(" material slot(s). Limits: 16 renderers, 64 materials, 4 emitters.");
             RefreshBoothGuide(true);
         }
 
         private void CreateRac2(int frameCount)
         {
-            string output = EditorUtility.SaveFilePanel("Create RAC2", "", _root.name, "rac2");
+            if (_bakeRunner != null) return;
+            if (AnimationMode.InAnimationMode() || EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                EditorUtility.DisplayDialog("RAC2", L("Stop Play Mode and Animation Preview before exporting."), "OK");
+                return;
+            }
+            try
+            {
+                Rac2AvatarPreprocessor.ValidateSource(_root);
+                if (_clip && _includePhysBones && Rac2PhysBoneBakeSession.Count(_root) > 0)
+                {
+                    Rac2PhysBoneBakeSession.ValidateEnvironment();
+                    Rac2VatFrameBaker.ValidateClip(_clip);
+                }
+            }
+            catch (Exception error)
+            {
+                Debug.LogException(error);
+                ShowExportError(L("RAC2: clothing setup required"), error);
+                return;
+            }
+            string output = EditorUtility.SaveFilePanel(L("Create RAC2"), "", _root.name, "rac2");
             if (string.IsNullOrEmpty(output)) return;
+
+            _bakeRunner = new Rac2EditorBakeRunner(CreateRac2Steps(frameCount, output), error =>
+            {
+                _bakeRunner = null;
+                Repaint();
+                if (error == null || error is OperationCanceledException) return;
+                Debug.LogException(error);
+                ShowExportError(L("RAC2 could not be created"), error);
+            });
+        }
+
+        private void CancelBake()
+        {
+            var runner = _bakeRunner;
+            _bakeRunner = null;
+            runner?.Dispose();
+            Repaint();
+        }
+
+        private IEnumerator CreateRac2Steps(int frameCount, string output)
+        {
+            GameObject source = _root;
+            AnimationClip sourceClip = _clip;
+            GameObject clone = null;
+            Scene preview = default(Scene);
+            Rac2AvatarPreprocessor avatarPreparation = null;
 
             var temporaryMeshes = new List<Mesh>();
             bool animationModeStarted = false;
             try
             {
+                preview = EditorSceneManager.NewPreviewScene();
+                clone = Instantiate(source);
+                SceneManager.MoveGameObjectToScene(clone, preview);
+                clone.hideFlags = HideFlags.HideAndDontSave;
+                _root = clone;
+                // Bone references and animation bindings must be assembled before controllers
+                // are removed, renderers enumerated, or any VAT frame is sampled.
+                avatarPreparation = Rac2AvatarPreprocessor.Prepare(clone, source, sourceClip);
+                _clip = avatarPreparation.Clip;
+                if (_clip != null)
+                {
+                    foreach (var animator in clone.GetComponentsInChildren<Animator>(true))
+                    {
+                        animator.runtimeAnimatorController = null;
+                        animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+                    }
+                }
                 var bundle = new Rac2BinaryExporter.BundleData
                 {
                     Interaction = new Rac2BinaryExporter.InteractionData
@@ -244,13 +355,17 @@ namespace AvatarCatalog.Remote
                     animationModeStarted = true;
                 }
                 CollectStaticRenderers(bundle, temporaryMeshes);
-                CollectSkinnedRenderers(bundle, temporaryMeshes, frameCount);
+                var skinnedSteps = CollectSkinnedRenderersSteps(bundle, temporaryMeshes, frameCount);
+                try { while (skinnedSteps.MoveNext()) yield return skinnedSteps.Current; }
+                finally { (skinnedSteps as IDisposable)?.Dispose(); }
                 if (animationModeStarted)
                 {
                     AnimationMode.StopAnimationMode();
                     animationModeStarted = false;
                 }
                 CollectParticles(bundle, temporaryMeshes);
+                // Booth preview selections must point to the user's objects, not the temporary copy.
+                _root = source;
                 bundle.Bounds = CalculateBundleBounds(bundle);
                 Bounds sourceBounds = bundle.Bounds;
                 SetExactBoothGuide(bundle);
@@ -265,24 +380,19 @@ namespace AvatarCatalog.Remote
                 if (IsInsideAssets(output)) AssetDatabase.Refresh();
 
                 EditorUtility.DisplayDialog(
-                    "RAC2 created",
-                    result.RenderNodeCount + " renderers / " +
-                    result.MaterialCount + " materials / " +
-                    result.VatNodeCount + " VAT nodes / " +
-                    result.ParticleEmitterCount + " particle emitters\n" +
-                    result.VertexCount + " vertices / " + result.IndexCount + " indices\n" +
-                    result.FileSize + " stored / " + result.UncompressedFileSize +
-                    " raw bytes / " + result.CompressedSectionCount + " LZ4 sections\n" +
+                    L("RAC2 created"),
+                    result.RenderNodeCount + L(" renderers / ") +
+                    result.MaterialCount + L(" materials / ") +
+                    result.VatNodeCount + L(" VAT nodes / ") +
+                    result.ParticleEmitterCount + L(" particle emitters\n") +
+                    result.VertexCount + L(" vertices / ") + result.IndexCount + L(" indices\n") +
+                    result.FileSize + L(" stored / ") + result.UncompressedFileSize +
+                    L(" raw bytes / ") + result.CompressedSectionCount + L(" LZ4 sections\n") +
                     (_compress
-                        ? "Smaller CDN file; VRChat opening can be slower for large VAT."
-                        : "Fast-loading RAC2 (recommended for large VAT).") + "\n\n" +
-                    "床置き・中央寄せはモデル形状を基準に自動適用済みです。",
+                        ? L("Smaller CDN file; VRChat opening can be slower for large VAT.")
+                        : L("Fast-loading RAC2 (recommended for large VAT).")) + "\n\n" +
+                    L("Automatically placed on the floor and centered using the model geometry."),
                     "OK");
-            }
-            catch (Exception exception)
-            {
-                Debug.LogException(exception);
-                EditorUtility.DisplayDialog("RAC2 could not be created", FriendlyMessage(exception), "OK");
             }
             finally
             {
@@ -290,6 +400,11 @@ namespace AvatarCatalog.Remote
                 if (animationModeStarted) AnimationMode.StopAnimationMode();
                 for (int index = 0; index < temporaryMeshes.Count; index++)
                     if (temporaryMeshes[index] != null) DestroyImmediate(temporaryMeshes[index]);
+                _root = source;
+                _clip = sourceClip;
+                if (clone != null) DestroyImmediate(clone);
+                avatarPreparation?.Dispose();
+                if (preview.IsValid()) EditorSceneManager.ClosePreviewScene(preview);
             }
         }
 
@@ -325,6 +440,27 @@ namespace AvatarCatalog.Remote
             List<Mesh> temporaryMeshes,
             int frameCount)
         {
+            // Legacy synchronous callers remain supported only when no player-loop evaluation is needed.
+            if (_clip != null && (HasActiveNativeConstraints(_root) || _includePhysBones))
+                throw new InvalidOperationException(L("Constraint-driven VAT requires the asynchronous RAC2 Creator bake."));
+            var steps = CollectSkinnedRenderersSteps(bundle, temporaryMeshes, frameCount);
+            try { while (steps.MoveNext()) { } }
+            finally { (steps as IDisposable)?.Dispose(); }
+        }
+
+        private static bool HasActiveNativeConstraints(GameObject root)
+        {
+            foreach (var component in root.GetComponentsInChildren<Behaviour>(true))
+                // Clips can enable an initially inactive/zero-weight constraint.
+                if (component != null && component is IConstraint) return true;
+            return false;
+        }
+
+        private IEnumerator CollectSkinnedRenderersSteps(
+            Rac2BinaryExporter.BundleData bundle,
+            List<Mesh> temporaryMeshes,
+            int frameCount)
+        {
             SkinnedMeshRenderer[] renderers = _root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             if (_clip == null)
             {
@@ -335,6 +471,9 @@ namespace AvatarCatalog.Remote
                         renderer.sharedMesh == null) continue;
                     Mesh baked = new Mesh { name = renderer.name + " RAC2 Pose" };
                     renderer.BakeMesh(baked);
+                    // BakeMesh can carry the renderer's conservative skinning bounds.
+                    // Placement and META must use the vertices actually written to RAC2.
+                    baked.RecalculateBounds();
                     temporaryMeshes.Add(baked);
                     EnsureMeshForMaterials(baked, renderer.sharedMaterials, renderer.name);
                     bundle.RenderNodes.Add(new Rac2BinaryExporter.RenderNodeData
@@ -347,7 +486,7 @@ namespace AvatarCatalog.Remote
                         LocalScale = RelativeScale(renderer.transform),
                     });
                 }
-                return;
+                yield break;
             }
 
             var included = new List<SkinnedMeshRenderer>();
@@ -357,7 +496,8 @@ namespace AvatarCatalog.Remote
                     renderers[index].sharedMesh != null)
                     included.Add(renderers[index]);
             }
-            if (included.Count == 0) return;
+            if (included.Count == 0) yield break;
+            bool evaluateConstraints = HasActiveNativeConstraints(_root);
 
             var baseMeshes = new Mesh[included.Count];
             var framePositions = new Vector3[included.Count][][];
@@ -373,13 +513,17 @@ namespace AvatarCatalog.Remote
                 temporaryMeshes.Add(bakedFrames[index]);
             }
 
+            using (var baker = new Rac2VatFrameBaker(_root, _clip, evaluateConstraints, _constraintMaxPasses,
+                _includePhysBones && Rac2PhysBoneBakeSession.Count(_root) > 0))
+            {
+            var warmup = baker.WarmUp(_physBoneWarmup);
+            try { while (warmup.MoveNext()) yield return warmup.Current; }
+            finally { (warmup as IDisposable)?.Dispose(); }
             for (int frame = 0; frame < frameCount; frame++)
             {
-                float denominator = _loop ? frameCount : frameCount - 1f;
-                float time = Mathf.Min(_clip.length, frame * _clip.length / denominator);
-                AnimationMode.BeginSampling();
-                AnimationMode.SampleAnimationClip(_root, _clip, time);
-                AnimationMode.EndSampling();
+                var sample = baker.SampleFrame(frame, frameCount, _loop, _physBoneSeam);
+                try { while (sample.MoveNext()) yield return sample.Current; }
+                finally { (sample as IDisposable)?.Dispose(); }
                 for (int rendererIndex = 0; rendererIndex < included.Count; rendererIndex++)
                 {
                     SkinnedMeshRenderer renderer = included[rendererIndex];
@@ -388,7 +532,7 @@ namespace AvatarCatalog.Remote
                     renderer.BakeMesh(baked);
                     if (baked.vertexCount != renderer.sharedMesh.vertexCount)
                         throw new InvalidOperationException(
-                            "VAT topology changed on '" + RelativePath(renderer.transform) + "'.");
+                            L("VAT topology changed on '") + RelativePath(renderer.transform) + "'.");
                     Matrix4x4 exhibitFromRenderer = exhibitFromWorld * renderer.transform.localToWorldMatrix;
                     Vector3[] positions = baked.vertices;
                     for (int vertex = 0; vertex < positions.Length; vertex++)
@@ -446,9 +590,11 @@ namespace AvatarCatalog.Remote
                         temporaryMeshes.Add(baseMeshes[rendererIndex]);
                     }
                 }
-                EditorUtility.DisplayProgressBar(
-                    "Creating RAC2 VAT", "Frame " + (frame + 1) + " / " + frameCount,
-                    (frame + 1f) / frameCount);
+                baker.RestoreOutput();
+                if (EditorUtility.DisplayCancelableProgressBar(
+                    L("Creating RAC2 VAT"), L("Frame ") + (frame + 1) + " / " + frameCount,
+                    (frame + 1f) / frameCount)) throw new OperationCanceledException();
+            }
             }
 
             for (int index = 0; index < included.Count; index++)
@@ -488,16 +634,16 @@ namespace AvatarCatalog.Remote
                 RejectUnsupportedParticleModules(source);
                 ParticleSystemRenderer sourceRenderer = source.GetComponent<ParticleSystemRenderer>();
                 if (sourceRenderer == null)
-                    throw new InvalidOperationException("Particle renderer is missing on '" + RelativePath(source.transform) + "'.");
+                    throw new InvalidOperationException(L("Particle renderer is missing on '") + RelativePath(source.transform) + "'.");
                 bool billboard = sourceRenderer.renderMode != ParticleSystemRenderMode.Mesh;
                 if (!billboard && sourceRenderer.mesh == null)
-                    throw new InvalidOperationException("Particle mesh is missing on '" + RelativePath(source.transform) + "'.");
+                    throw new InvalidOperationException(L("Particle mesh is missing on '") + RelativePath(source.transform) + "'.");
                 if (sourceRenderer.renderMode != ParticleSystemRenderMode.Mesh &&
                     sourceRenderer.renderMode != ParticleSystemRenderMode.Billboard &&
                     sourceRenderer.renderMode != ParticleSystemRenderMode.HorizontalBillboard &&
                     sourceRenderer.renderMode != ParticleSystemRenderMode.VerticalBillboard)
                     throw new NotSupportedException(
-                        "Particle '" + RelativePath(source.transform) + "' must use Billboard or Mesh rendering.");
+                        L("Particle '") + RelativePath(source.transform) + L("' must use Billboard or Mesh rendering."));
 
                 Mesh particleMesh = billboard
                     ? CreateParticleQuad()
@@ -508,18 +654,18 @@ namespace AvatarCatalog.Remote
                 ParticleSystem.EmissionModule emission = source.emission;
                 ParticleSystem.ShapeModule shape = source.shape;
                 float lifeMin, lifeMax, speedMin, speedMax, sizeMin, sizeMax, gravityMin, gravityMax;
-                ReadParticleCurve(main.startLifetime, "start lifetime", out lifeMin, out lifeMax);
-                ReadParticleCurve(main.startSpeed, "start speed", out speedMin, out speedMax);
-                ReadParticleCurve(main.startSize, "start size", out sizeMin, out sizeMax);
-                ReadParticleCurve(main.gravityModifier, "gravity", out gravityMin, out gravityMax);
+                ReadParticleCurve(main.startLifetime, L("start lifetime"), out lifeMin, out lifeMax);
+                ReadParticleCurve(main.startSpeed, L("start speed"), out speedMin, out speedMax);
+                ReadParticleCurve(main.startSize, L("start size"), out sizeMin, out sizeMax);
+                ReadParticleCurve(main.gravityModifier, L("gravity"), out gravityMin, out gravityMax);
                 if (Mathf.Abs(lifeMax - lifeMin) > 0.0001f)
-                    throw new NotSupportedException("Particle lifetime must be constant.");
+                    throw new NotSupportedException(L("Particle lifetime must be constant."));
                 if (Mathf.Abs(gravityMax - gravityMin) > 0.0001f)
-                    throw new NotSupportedException("Particle gravity must be constant.");
+                    throw new NotSupportedException(L("Particle gravity must be constant."));
                 float rateMin, rateMax;
-                ReadParticleCurve(emission.rateOverTime, "emission rate", out rateMin, out rateMax);
+                ReadParticleCurve(emission.rateOverTime, L("emission rate"), out rateMin, out rateMax);
                 if (Mathf.Abs(rateMax - rateMin) > 0.0001f)
-                    throw new NotSupportedException("Particle emission rate must be constant.");
+                    throw new NotSupportedException(L("Particle emission rate must be constant."));
 
                 Color startColor;
                 Color endColor;
@@ -543,7 +689,7 @@ namespace AvatarCatalog.Remote
                 {
                     float rotationMin;
                     float rotationMax;
-                    ReadParticleCurve(rotation.z, "rotation over lifetime", out rotationMin, out rotationMax);
+                    ReadParticleCurve(rotation.z, L("rotation over lifetime"), out rotationMin, out rotationMax);
                     angularSpeed = rotationMax * Mathf.Rad2Deg;
                 }
                 Texture texture = null;
@@ -628,7 +774,7 @@ namespace AvatarCatalog.Remote
             }
 
             throw new InvalidOperationException(
-                "No supported renderer or particle was found.");
+                L("No supported renderer or particle was found."));
         }
 
         private static Bounds VatBounds(Rac2BinaryExporter.VatClipData vat)
@@ -684,19 +830,20 @@ namespace AvatarCatalog.Remote
         {
             if (!BoothBoundsFit(bounds))
                 throw new InvalidOperationException(
-                    "展示物の全体サイズが3m × 3m × 高さ2.7mへ収まりません。\n" +
+                    L("The exhibit exceeds the 3m x 3m x 2.7m booth.\n") +
                     DescribeBoothOverflow(bounds) + "\n" +
-                    "Rootの位置やPivotは判定に影響しません。保存時に床置き・中央寄せします。\n" +
-                    "ParticleSystemは床・中央・寸法判定の対象外です。ブース外の粒子は再生時に自動で隠れます。");
+                    L("Root position and pivot do not affect this check. Export centers the model on the floor.\n") +
+                    L("Particles are excluded from floor, centering and size checks. Particles outside the booth are hidden during playback."));
         }
 
         private Mesh CopyReadableMesh(Mesh source, string name)
         {
-            if (source == null) throw new InvalidOperationException("A source mesh is missing.");
+            if (source == null) throw new InvalidOperationException(L("A source mesh is missing."));
             if (!source.isReadable)
-                throw new InvalidOperationException("Mesh '" + source.name + "' must have Read/Write enabled.");
+                throw new InvalidOperationException(L("Mesh '") + source.name + L("' must have Read/Write enabled."));
             Mesh copy = Instantiate(source);
             copy.name = name;
+            copy.RecalculateBounds();
             return copy;
         }
 
@@ -704,13 +851,13 @@ namespace AvatarCatalog.Remote
         {
             if (source == null || source.Length < count)
                 throw new InvalidOperationException(
-                    "Renderer '" + label + "' needs one material per submesh.");
+                    L("Renderer '") + label + L("' needs one material per submesh."));
             Material[] result = new Material[count];
             for (int index = 0; index < count; index++)
             {
                 if (source[index] == null)
                     throw new InvalidOperationException(
-                        "Renderer '" + label + "' has an empty material slot " + index + ".");
+                        L("Renderer '") + label + L("' has an empty material slot ") + index + ".");
                 result[index] = source[index];
             }
             return result;
@@ -729,7 +876,7 @@ namespace AvatarCatalog.Remote
                 if (!hasNormal) continue;
                 if (mesh.uv == null || mesh.uv.Length != mesh.vertexCount)
                     throw new InvalidOperationException(
-                        "Normal-mapped material '" + material.name + "' requires UV0.");
+                        L("Normal-mapped material '") + material.name + L("' requires UV0."));
                 if (mesh.normals == null || mesh.normals.Length != mesh.vertexCount)
                     mesh.RecalculateNormals();
                 if (mesh.tangents == null || mesh.tangents.Length != mesh.vertexCount)
@@ -774,22 +921,40 @@ namespace AvatarCatalog.Remote
 
         private static string FriendlyMessage(Exception exception)
         {
-            if (exception == null) return "Unknown error.";
-            return exception.Message +
-                "\n\nSelect the exhibit root, fix the named object, then press Create RAC2 again.";
+            if (exception == null) return L("Unknown error.");
+            string message = FlareLocalization.Text(exception.Message);
+            // Unmapped exporter/SDK diagnostics remain available verbatim through Details and Console.
+            if (FlareLocalization.Japanese && !ContainsJapanese(message))
+                message = "書き出しデータまたは設定に問題があります。「技術情報を表示」で対象と理由を確認してください。";
+            return message +
+                L("\n\nSelect the exhibit root, fix the named object, then press Create RAC2 again.");
         }
+
+        private static bool ContainsJapanese(string text)
+        {
+            foreach (char c in text) if (c >= '\u3040' && c <= '\u9fff') return true;
+            return false;
+        }
+
+        private static void ShowExportError(string title, Exception error)
+        {
+            if (!EditorUtility.DisplayDialog(title, FriendlyMessage(error), "OK", L("Show technical details")))
+                EditorUtility.DisplayDialog(L("Show technical details"), error.ToString(), "OK");
+        }
+
+        private static string L(string english) { return FlareLocalization.Text(english); }
 
         private static void RejectUnsupportedParticleModules(ParticleSystem source)
         {
-            if (source.noise.enabled) throw new NotSupportedException("Particle Noise is not supported.");
-            if (source.collision.enabled) throw new NotSupportedException("Particle Collision is not supported.");
-            if (source.trails.enabled) throw new NotSupportedException("Particle Trails are not supported.");
-            if (source.subEmitters.enabled) throw new NotSupportedException("Particle Sub Emitters are not supported.");
-            if (source.lights.enabled) throw new NotSupportedException("Particle Lights are not supported.");
+            if (source.noise.enabled) throw new NotSupportedException(L("Particle Noise is not supported."));
+            if (source.collision.enabled) throw new NotSupportedException(L("Particle Collision is not supported."));
+            if (source.trails.enabled) throw new NotSupportedException(L("Particle Trails are not supported."));
+            if (source.subEmitters.enabled) throw new NotSupportedException(L("Particle Sub Emitters are not supported."));
+            if (source.lights.enabled) throw new NotSupportedException(L("Particle Lights are not supported."));
             if (source.main.simulationSpace != ParticleSystemSimulationSpace.Local)
-                throw new NotSupportedException("Particle simulation space must be Local.");
+                throw new NotSupportedException(L("Particle simulation space must be Local."));
             if (source.main.startSize3D)
-                throw new NotSupportedException("Particle start size must be uniform.");
+                throw new NotSupportedException(L("Particle start size must be uniform."));
         }
 
         private static void ReadParticleCurve(
@@ -808,7 +973,7 @@ namespace AvatarCatalog.Remote
                 return;
             }
             throw new NotSupportedException(
-                "Particle " + label + " supports Constant or Two Constants only.");
+                L("Particle ") + label + L(" supports Constant or Two Constants only."));
         }
 
         private static void ReadParticleColors(ParticleSystem source, out Color start, out Color end)
@@ -816,7 +981,7 @@ namespace AvatarCatalog.Remote
             ParticleSystem.MinMaxGradient initial = source.main.startColor;
             if (initial.mode == ParticleSystemGradientMode.Color) start = initial.color;
             else if (initial.mode == ParticleSystemGradientMode.TwoColors) start = initial.colorMax;
-            else throw new NotSupportedException("Particle start color must be Color or Two Colors.");
+            else throw new NotSupportedException(L("Particle start color must be Color or Two Colors."));
 
             end = new Color(start.r, start.g, start.b, 0f);
             ParticleSystem.ColorOverLifetimeModule color = source.colorOverLifetime;
@@ -834,7 +999,7 @@ namespace AvatarCatalog.Remote
                 end = new Color(start.r, start.g, start.b, 0f);
             }
             else throw new NotSupportedException(
-                "Particle color over lifetime must use one Color or Gradient.");
+                L("Particle color over lifetime must use one Color or Gradient."));
         }
 
         private static void ReadParticleShape(
@@ -867,7 +1032,7 @@ namespace AvatarCatalog.Remote
                     return;
                 default:
                     throw new NotSupportedException(
-                        "Particle shape must be Point, Sphere, Cone, or Box.");
+                        L("Particle shape must be Point, Sphere, Cone, or Box."));
             }
         }
 

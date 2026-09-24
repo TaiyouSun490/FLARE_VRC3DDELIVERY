@@ -77,7 +77,7 @@ namespace AvatarCatalog.Remote
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
         }
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Tests/RAC1 Udon Play Mode/Run HTTPS Trigger Now")]
+        [MenuItem("Tools/FLARE/Developer/Tests/RAC1 Udon Play Mode/Run HTTPS Trigger Now")]
         private static void RunTriggerNow()
         {
             PollTriggerFile(true);

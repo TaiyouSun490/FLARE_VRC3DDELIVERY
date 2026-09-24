@@ -41,7 +41,7 @@ namespace AvatarCatalog.Remote
             EditorApplication.update += ConsumeRequest;
         }
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Installers/Rebuild Complete ImagePad Prefabs")]
+        [MenuItem("Tools/FLARE/Developer/Installers/Rebuild Complete ImagePad Prefabs")]
         public static void Install()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)

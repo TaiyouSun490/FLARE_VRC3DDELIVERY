@@ -39,7 +39,7 @@ namespace AvatarCatalog.Remote
             EditorApplication.update += ConsumeRequest;
         }
 
-        [MenuItem("Tools/Avatar Catalog/Developer/Build/Build Complete RAC2 Release Package")]
+        [MenuItem("Tools/FLARE/Developer/Build/Build Complete RAC2 Release Package")]
         public static void BuildRelease()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
@@ -74,6 +74,8 @@ namespace AvatarCatalog.Remote
                     IntegratedPrefab,
                     PedestalPrefab,
                     DistributionRoot + "/README-JA.md",
+                    DistributionRoot + "/USER-GUIDE-JA.md",
+                    DistributionRoot + "/USER-GUIDE-EN.md",
                     DistributionRoot + "/DEPENDENCIES-JA.md",
                     "Assets/com.avatarcatalog.remote/package.json",
                     "Assets/com.avatarcatalog.remote/README-RAC2-JA.md",
@@ -88,7 +90,16 @@ namespace AvatarCatalog.Remote
                     "Assets/com.avatarcatalog.remote/Editor/Rac2BinaryExporter.cs",
                     "Assets/com.avatarcatalog.remote/Editor/Rac2BundleBinaryExporter.cs",
                     "Assets/com.avatarcatalog.remote/Editor/Rac2CreatorWindow.cs",
+                    "Assets/com.avatarcatalog.remote/Editor/FlareLocalization.cs",
+                    "Assets/com.avatarcatalog.remote/Editor/Rac2CreatorPerformance.cs",
+                    "Assets/com.avatarcatalog.remote/Editor/Rac2PerformanceRating.cs",
                     "Assets/com.avatarcatalog.remote/Editor/Rac2CreatorWindow.BoothGuide.cs",
+                    "Assets/com.avatarcatalog.remote/Editor/Rac2AvatarPreprocessor.cs",
+                    "Assets/com.avatarcatalog.remote/Editor/Rac2EditorBakeRunner.cs",
+                    "Assets/com.avatarcatalog.remote/Editor/Rac2ConstraintBakeBarrier.cs",
+                    "Assets/com.avatarcatalog.remote/Editor/Rac2VatAnimationSampler.cs",
+                    "Assets/com.avatarcatalog.remote/Editor/Rac2VatFrameBaker.cs",
+                    "Assets/com.avatarcatalog.remote/Editor/Rac2PhysBoneBakeSession.cs",
                     "Assets/com.avatarcatalog.remote/Editor/Rac2ProductMetadataUtility.cs",
                     "Assets/com.avatarcatalog.remote/Shaders/Rac2NormalEncode.shader",
                 },

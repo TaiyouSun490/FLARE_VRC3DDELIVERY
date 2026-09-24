@@ -7,15 +7,35 @@ RAC2 は、VRChat World 上の ImagePad が公開 HTTPS URL から読み込む 3
 
 1. 展示したい GameObject 一式を、1 個のルート GameObject の子にまとめます。
 2. そのルートを選択します。
-3. `Tools > Avatar Catalog > RAC2 Creator...` を開きます。
+3. `Tools > FLARE > RAC2 Creator...` を開きます。
 4. Scene ビューの「保存後の配置」を確認します。Root の位置や Pivot は関係なく、保存時に展示物を自動で床置き・中央寄せします。
 5. アニメーションが必要なら `Animation Clip` を指定します。指定しない場合、SkinnedMeshRenderer は現在のポーズで保存されます。
+   髪・衣装などの揺れも記録する場合は `PhysBone を含める` を ON にします（SDK 3.10.4 対応）。
+   Clip 未指定では VAT / PhysBone の揺れは入りません。作成完了画面の `VAT nodes` が 0 の場合は静止版です。
 6. 必要なら商品情報、Collider、`Portable / VRC Pickup` を設定します。
    読み込み速度を優先する場合は `Smaller file (slower load)` を OFF にします。
 7. `Create RAC2...` を押して保存します。
 8. `.rac2` を認証不要の公開 HTTPS URL に配置し、ImagePad へ URL を入力して `LOAD RAC2` を押します。
 
-GameObject の右クリックメニュー `Avatar Catalog > Create RAC2 from this object...` からも開始できます。
+GameObject の右クリックメニュー `FLARE > Create RAC2 from this object...` からも開始できます。
+
+## Modular Avatar の衣装
+
+MA Merge Armature などの衣装設定がある場合、Creator は書き出し用コピーに NDMF の
+Generic platform 処理を実行し、骨格を結合してから VAT を焼き込みます。
+元のアバター・Clip は変更しません。別メッシュ・別マテリアルのまま利用できます。
+指定 Clip も NDMF に渡すため、骨格結合に伴うアニメーションの参照パス変更が反映されます。
+
+- MA 衣装の**作成環境**には Modular Avatar と NDMF が必要です。
+  骨格結合と衣装追従を CLI 検証した組合せは MA 1.18.7 / NDMF 1.14.8、Unity 2022.3.22f1 です。
+  公式 VPM リポジトリ: https://vpm.nadena.dev/vpm.json
+- ワールド用 SDK をアバター用 SDK に置き換える必要はありません。
+- 通常のモデル、および作成済み RAC2 の**読み込み先**には MA / NDMF は不要です。
+- MA が未導入で Missing Script がある場合、書き出しを停止して不足を案内します。
+  NDMF が構築エラーを報告した場合も RAC2 は保存しません。
+- この処理は展示用メッシュの構築です。アバターのメニュー・FX・PhysBone の動作全体を
+  RAC2 で再現するものではありません。
+- 衣装が追従しない状態で既に作成した RAC2 は、修正後に再作成・再配置が必要です。
 
 ## Creator が自動でまとめるもの
 
@@ -58,7 +78,31 @@ Animation Clip を指定すると、全 SkinnedMeshRenderer を同じタイム�
 - Position VAT は RGBAHalf
 - Normal VAT は任意
 - VAT texture は最大幅 2048、高さ 4096
-- Animator Controller、PhysBone、動的 Collider はベイク対象外
+- Animator Controller 全体と、読み込み後のリアルタイム物理は対象外
+
+### PhysBone の揺れを含める
+
+`Animation Clip` を指定して `PhysBone を含める` を ON にします（既定 OFF）。
+MA の衣装構築後、SDK 本体の PhysBone solver を書き出し用コピーに対して進め、
+髪・衣装などが揺れた頂点位置と法線を通常の VAT として保存します。
+Play Mode への切り替えや、ユーザーのシーン全体の物理更新は行いません。
+
+- 作成側は **VRChat Base SDK 3.10.4** 対応です。SDK には公開のオフライン step API がないため、
+  他バージョンでは安全のため停止します。OFF にすれば従来の VAT を作成できます。
+- `開始姿勢の安定化 (秒)`（既定 1 秒、0～10 秒）は Clip の先頭姿勢を保持して揺れを落ち着かせます。
+  出力フレーム数・Clip の開始時刻には加算しません。
+- `ループ末尾の揺れ補間 (秒)`（既定 0.15 秒、0 で無効）は、ループ末尾の物理による差分だけを
+  最初のフレームの差分に近づけます。最大で Clip 長の半分に制限します。
+  Clip 自体の先頭と末尾の姿勢や Root Motion が異なる場合、その段差までは修正しません。
+- 物理は 1/60 秒以下の刻みで時間順に計算するため、通常の VAT より書き出しに時間がかかります。
+  同じ頂点数・VAT フレーム数・法線設定なら、VAT の非圧縮データ量は増えません。
+- 有効な PhysBone がない場合は通常の VAT です。Clip がない場合は現状ポーズの書き出しです。
+- ルート内の PhysBone Collider を使います。骨・Collider のルート外参照は停止して案内します。
+  ワールドの通常の Collider、他人の手、掴み・ポーズ、Contact/FX の操作は再現しません。
+- Clip による PhysBone/PhysBone Collider 設定や GameObject の有効切り替えは未対応です。
+  該当カーブがある場合は黙って無視せず停止します。
+- 読み込み先は従来の VAT 再生で動きます。PhysBone コンポーネントをダウンロード・復元する機能ではありません。
+  既存 RAC2 は作り直してください。
 
 ## Particle
 
